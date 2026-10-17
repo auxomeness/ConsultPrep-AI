@@ -21,6 +21,7 @@ export const PatientResponseSchema = z.object({
   sequence: z.number().int().nonnegative(),
   questionId: z.string().min(1).optional(),
   questionBankId: z.string().min(1).optional(),
+  questionBankIds: z.array(z.string().min(1)).max(20).optional(),
   correctsResponseId: z.string().min(1).optional(),
   createdAt: z.string().datetime().optional(),
 });
@@ -61,12 +62,20 @@ export const IntakeStateSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   concern: z.string().max(8_000),
   responses: z.array(PatientResponseSchema).max(300),
+  // A short assistant window discourages repeated acknowledgments. Patient
+  // responses remain the complete source of truth.
+  recentAssistantMessages: z.array(z.string().max(2_000)).max(8).optional(),
   fields: z.array(IntakeFieldSchema).max(100),
   questionsAsked: z.array(z.string().max(500)).max(100),
   questionHistory: z.array(QuestionHistoryEntrySchema).max(100).optional(),
   activeQuestionId: z.string().min(1).optional(),
+  activeQuestionIds: z.array(z.string().min(1)).max(20).optional(),
+  communicationPreferences: z.object({
+    questionFormat: z.enum(["plain", "bullets"]).optional(),
+    questionPacing: z.enum(["one_at_a_time", "grouped"]).optional(),
+  }).optional(),
   completion: z.enum(["in_progress", "ready_for_review", "completed", "emergency_interrupted"]),
-  currentIntent: z.enum(["finish", "summary", "workflow_question", "guidance_request", "personal_concern", "correction", "decline", "unclear", "identity_question", "eye_care_navigation", "care_service_request", "frightened_about_dying", "greeting", "vague_opening", "ambiguous_opening", "continue"]).optional(),
+  currentIntent: z.enum(["recall_request", "format_preference", "clarification_request", "off_topic", "finish", "summary", "workflow_question", "guidance_request", "personal_concern", "correction", "repetition_complaint", "decline", "unclear", "identity_question", "eye_care_navigation", "care_service_request", "frightened_about_dying", "greeting", "vague_opening", "ambiguous_opening", "continue"]).optional(),
   patientConfirmed: z.boolean().optional(),
   safety: SafetyEventSchema.optional(),
   guidanceProvided: z.array(GuidanceRecordSchema).max(50).optional(),
@@ -80,6 +89,7 @@ export const NextTurnResultSchema = z.object({
   assistantMessage: z.string().min(1).max(2_000),
   askedQuestion: z.string().max(500).nullable(),
   askedQuestionId: z.string().min(1).nullable().optional(),
+  askedQuestionIds: z.array(z.string().min(1)).max(20).optional(),
   fieldUpdates: z.array(FieldUpdateSchema).max(30),
   guidanceProvided: GuidanceRecordSchema.optional(),
 });
@@ -194,6 +204,7 @@ export const BriefFactSchema = z.object({
 export const StructuredConsultationBriefSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   status: z.enum(["ai_generated_draft", "patient_confirmed"]),
+  patientReportedNarrative: BriefFactSchema.optional(),
   patientIdentification: z.array(BriefFactSchema).default([]),
   reasonForConsultation: z.array(BriefFactSchema).default([]),
   currentSymptoms: z.array(BriefFactSchema).default([]),

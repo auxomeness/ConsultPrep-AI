@@ -57,12 +57,17 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
     text: fact.text === "Asks where to seek eye care" ? "Patient asks where to seek eye care" : fact.text,
   }));
   const timelineFields = activeFields.filter((field) => ["onset", "progression", "onset_pattern", "previous_episodes", "episode_pattern", "visual_change_timing"].includes(field.fieldId) || field.fieldId.startsWith("symptom_onset_"));
-  const timelineFacts = timelineFields.flatMap((field) => factsFor([field]).map((fact) => ({
+  const rawTimelineFacts = timelineFields.flatMap((field) => factsFor([field]).map((fact) => ({
     ...fact,
     text: `${timelineLabel(field.fieldId)}: ${fact.text}`,
   })));
-  const contextFields = activeFields.filter((field) => ["relevant_context", "medical_history", "medications", "allergies", "recent_events", "prior_advice", "prior_eye_advice", "contact_lens_use", "food_fluids"].includes(field.fieldId));
-  const symptomDetailFields = activeFields.filter((field) => ["symptom_location", "symptom_character", "symptom_severity", "headache_location", "headache_character", "headache_severity", "headache_associated_changes", "digestive_pattern", "ent_associated_features", "visual_change_description"].includes(field.fieldId));
+  const specificOnsets = new Set(activeFields.filter((field) => field.fieldId.startsWith("symptom_onset_") && field.value)
+    .map((field) => `${field.value}|${field.sourceResponseIds.join(",")}`));
+  const timelineFacts = rawTimelineFacts.filter((fact) => !fact.text.startsWith("Onset:")
+    || !specificOnsets.has(`${fact.text.slice("Onset: ".length)}|${fact.sourceResponseIds.join(",")}`));
+  const contextFields = activeFields.filter((field) => ["relevant_context", "medical_history", "medications", "allergies", "recent_events", "prior_advice", "prior_eye_advice", "contact_lens_use", "food_fluids", "temperature_measurement"].includes(field.fieldId));
+  const symptomDetailFields = activeFields.filter((field) => ["symptom_location", "symptom_character", "symptom_severity", "headache_location", "headache_character", "headache_severity", "cramping_character", "headache_associated_changes", "digestive_pattern", "ent_associated_features", "visual_change_description"].includes(field.fieldId)
+    && (!field.value || field.value.length <= 120 && !/\b(?:began|started|since|\d+\s+(?:days?|hours?|weeks?)\s+ago)\b/i.test(field.value)));
   const actionFields = activeFields.filter((field) => field.fieldId === "actions_taken");
   const backgroundFacts = [
     ...factsFor(contextFields),
@@ -101,9 +106,27 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
   }));
   const topUnanswered = [...unansweredOnset, ...unanswered].sort((left, right) => Number(right.importance === "important") - Number(left.importance === "important")).slice(0, 6);
   const intakeCompleteness = assessIntakeCompleteness(state);
+  const narrativeSources = [
+    ...primaryFacts,
+    ...allSymptomFacts,
+    ...timelineFacts,
+    ...backgroundFacts,
+    ...factsFor(additional),
+  ];
+  const narrativeSourceResponseIds = [...new Set(narrativeSources.flatMap((fact) => fact.sourceResponseIds))];
+  const narrativeOriginalText = [...new Set(narrativeSources.flatMap((fact) => fact.originalText))];
+  const patientReportedNarrative = narrativeSourceResponseIds.length
+    ? {
+      text: makePatientReportedNarrative(primaryFacts, allSymptomFacts, timelineFacts, backgroundFacts, factsFor(additional), informationNotEstablished),
+      status: "reported" as const,
+      sourceResponseIds: narrativeSourceResponseIds,
+      originalText: narrativeOriginalText,
+    }
+    : undefined;
   const brief = StructuredConsultationBriefSchema.parse({
     schemaVersion: "1.0",
     status: confirmed ? "patient_confirmed" : "ai_generated_draft",
+    ...(patientReportedNarrative ? { patientReportedNarrative } : {}),
     patientIdentification: factsFor(activeFields.filter((field) => field.fieldId === "patient_name" || field.fieldId === "patient_identifier")),
     reasonForConsultation: primaryFacts,
     currentSymptoms: allSymptomFacts,
@@ -153,9 +176,7 @@ export function formatStructuredBrief(brief: StructuredConsultationBrief): strin
   const reason = brief.reasonForConsultation.length ? brief.reasonForConsultation : brief.primaryConcern;
   const symptoms = brief.currentSymptoms.length ? brief.currentSymptoms : brief.reportedSymptoms;
   addHeading(lines, "Overview");
-  const reasonText = reason.map((fact) => fact.text).join("; ");
-  const symptomText = symptoms.map((fact) => fact.text).join(", ");
-  appendWrapped(lines, `${reasonText ? `You came to organize a concern about ${reasonText.toLocaleLowerCase()}.` : "You came to organize a health concern."}${symptomText ? ` You also reported ${symptomText.toLocaleLowerCase()}.` : ""} This summary records what you shared; it does not identify a cause or diagnosis.`, width, "  ");
+  appendWrapped(lines, brief.patientReportedNarrative?.text ?? "This summary records what you shared; it does not identify a cause or diagnosis.", width, "  ");
   pushSection(lines, "Reason for Visit", reason, width);
   pushSection(lines, "Symptoms You Reported", symptoms, width);
   pushSection(lines, "Timeline", brief.symptomTimeline.length ? brief.symptomTimeline : brief.onsetAndProgression, width);
@@ -191,22 +212,21 @@ export function formatStructuredBrief(brief: StructuredConsultationBrief): strin
     appendWrapped(lines, `• ${concern.label}: ${concern.status.replace(/_/g, " ")}${detail}`, width, "  ");
   });
 
-  pushSection(lines, "Your Questions", brief.patientConcernsAndQuestions, width);
+  pushSection(lines, "Your Concerns and Questions", brief.patientConcernsAndQuestions, width);
   if (brief.guidanceProvided.length) {
     addHeading(lines, "Guidance Shared During Intake");
-    brief.guidanceProvided.forEach((item) => appendWrapped(lines, `• ${item.text} (${item.category.replace(/_/g, " ")}; prompted by ${formatSources(item.sourceResponseIds)})`, width, "  "));
+    brief.guidanceProvided.forEach((item) => appendWrapped(lines, `• ${item.text}`, width, "  "));
   }
   pushSection(lines, "Safety-Relevant Statements", brief.safetyRelevantStatements, width);
   if (brief.automatedSafetyFlags.length) {
     addHeading(lines, "Safety Notice");
-    brief.automatedSafetyFlags.forEach((flag) => appendWrapped(lines, `${flag.message} (rule ${flag.ruleId}; ${formatSources(flag.sourceResponseIds)})`, width, "  "));
+    brief.automatedSafetyFlags.forEach((flag) => appendWrapped(lines, flag.message, width, "  "));
   }
 
-  addHeading(lines, "Your Original Answers");
-  brief.sourceTraceability.forEach((source) => appendWrapped(lines, `[${source.responseId}] “${source.originalText}”`, width, "  "));
-  lines.push("");
+  addHeading(lines, "For Your Clinician");
+  appendWrapped(lines, "Show this summary to your doctor or clinician to help them understand what you’ve been experiencing and inform their assessment. It does not provide a diagnosis; review the details with them.", width, "  ");
   addHeading(lines, "Handoff Status");
-  appendWrapped(lines, `Patient confirmation: ${brief.status === "patient_confirmed" ? "confirmed locally" : "not yet confirmed"}. Clinician review: ${brief.clinicianReviewStatus.replace(/_/g, " ")}. This terminal demo has not sent the summary to a clinician.`, width, "  ");
+  appendWrapped(lines, `Patient confirmation: ${brief.status === "patient_confirmed" ? "confirmed by you" : "not yet confirmed"}. Clinician review: ${brief.clinicianReviewStatus.replace(/_/g, " ")}. This terminal demo has not sent the summary to a clinician.`, width, "  ");
   const comfortInfo = patientComfortInformation(brief);
   if (comfortInfo) {
     lines.push("");
@@ -224,18 +244,126 @@ export function formatStructuredBrief(brief: StructuredConsultationBrief): strin
   return lines.join("\n");
 }
 
+function makePatientReportedNarrative(
+  reason: Array<{ text: string }>,
+  symptoms: Array<{ text: string }>,
+  timeline: Array<{ text: string }>,
+  details: Array<{ text: string }>,
+  associated: Array<{ text: string }>,
+  notEstablished: string[],
+): string {
+  const primary = reason[0]?.text;
+  const symptomNames = [...new Set(symptoms.map((fact) => fact.text).filter((value) => value !== primary
+    && !(primary && symptomAlreadyInConcern(primary, value))))];
+  const sentences: string[] = [];
+  if (primary && !/^Reason for seeking care/i.test(primary)) {
+    sentences.push(`I’m seeking advice about ${naturalConcern(primary)}.`);
+  } else if (symptomNames.length) {
+    sentences.push(`I’m experiencing ${joinNatural(symptomNames.map(naturalSymptom)).toLocaleLowerCase()}.`);
+  } else {
+    sentences.push("I’d like to discuss a health concern with a healthcare professional.");
+  }
+  if (symptomNames.length && primary && !/^Reason for seeking care/i.test(primary)) {
+    const otherSymptoms = symptomNames.map(naturalSymptom);
+    sentences.push(otherSymptoms.includes("feeling cold or having chills")
+      ? "I also feel cold or have chills."
+      : `I’m also experiencing ${joinNatural(otherSymptoms).toLocaleLowerCase()}.`);
+  }
+  const onsetFacts = timeline.map((fact) => fact.text).filter((text) => /^Onset(?: \(.+\))?:/i.test(text));
+  const onsetValues = [...new Set(onsetFacts.map((text) => text.replace(/^Onset(?: \(.+\))?:\s*/i, "")))];
+  const timelineText = [
+    ...(onsetValues.length === 1 && onsetFacts.length > 1 ? [`My symptoms began ${onsetValues[0]!.toLocaleLowerCase()}`] : onsetFacts.map(naturalTimeline)),
+    ...timeline.map((fact) => fact.text).filter((text) => !/^Onset(?: \(.+\))?:/i.test(text)).map(naturalTimeline),
+  ];
+  if (timelineText.length) sentences.push(`${joinNatural(timelineText)}.`);
+  const detailText = details.map((fact) => fact.text).filter((value) => !value.startsWith("Action taken: ")
+    && !(primary && value.split(/:\s*/, 2).at(-1)?.trim() && primary.toLocaleLowerCase().includes(value.split(/:\s*/, 2).at(-1)!.trim().toLocaleLowerCase())));
+  for (const detail of detailText) {
+    const [label, value] = detail.split(/:\s*/, 2);
+    if (!label || !value) continue;
+    if (/^cramping character$/i.test(label) && /hard to describe/i.test(value)) {
+      sentences.push("I find the cramping hard to describe clearly.");
+      continue;
+    }
+    if (/^temperature (?:measurement|reading)$/i.test(label)) {
+      const reading = value.replace(/^Temperature reading:\s*/i, "");
+      const uncertain = /uncertain or approximate/i.test(reading);
+      const cleanedReading = reading.replace(/\s*\(uncertain or approximate, as reported\)/i, "");
+      if (!primary || !new RegExp(`\\b${cleanedReading.match(/\d{2}(?:\.\d+)?/)?.[0] ?? "(?!)"}\\b`).test(primary)) {
+        sentences.push(`I reported a temperature of ${cleanedReading}${uncertain ? " as an estimate" : ""}.`);
+      }
+      continue;
+    }
+    const symptom = /^(Headache|Symptom) Character$/i.test(label) ? "the headache" : `the ${label.replace(/ character$/i, "").toLocaleLowerCase()}`;
+    sentences.push(`I describe ${symptom} as “${value}.”`);
+  }
+  const actions = details.filter((fact) => fact.text.startsWith("Action taken: ")).map((fact) => fact.text.slice("Action taken: ".length));
+  if (actions.length) sentences.push(`I have tried ${joinNatural(actions)}.`);
+  const additionalSymptoms = associated.map((fact) => fact.text).filter((text) => !/^no (?:additional|other) symptoms reported$/i.test(text.trim()));
+  if (additionalSymptoms.length) sentences.push(`I also reported ${joinNatural(additionalSymptoms)}.`);
+  const unresolved = notEstablished.filter((item) => !/^(?:primary concern|patient question):/i.test(item));
+  if (unresolved.some((item) => /headache location/i.test(item))) {
+    sentences.push("I haven’t established the exact headache location or whether it stays in one place or moves.");
+  }
+  const otherUnresolved = unresolved.filter((item) => !/headache location/i.test(item));
+  if (otherUnresolved.length) sentences.push(`I haven’t established: ${joinNatural(otherUnresolved)}.`);
+  return sentences.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function naturalTimeline(text: string): string {
+  const specific = text.match(/^Onset \((.+)\):\s*(.+)$/i);
+  if (specific) {
+    const symptom = specific[1]!.toLocaleLowerCase();
+    return `${symptom === "headache" ? "My headache" : "My symptoms"} began ${specific[2]!.toLocaleLowerCase()}`;
+  }
+  const onset = text.match(/^Onset:\s*(.+)$/i);
+  if (onset) return `My symptoms began ${onset[1]!.toLocaleLowerCase()}`;
+  const course = text.match(/^Course:\s*(.+)$/i);
+  if (course) return `My symptoms have ${course[1]!.toLocaleLowerCase()}`;
+  return `I reported ${text.toLocaleLowerCase()}`;
+}
+
+function naturalConcern(text: string): string {
+  if (/^(?:i\s+(?:have|had|am|was|feel|felt|am experiencing|was experiencing)\b|my\s+)/i.test(text)) return text;
+  const value = text.toLocaleLowerCase();
+  if (/^headache$/.test(value)) return "a headache";
+  return value;
+}
+
+function symptomAlreadyInConcern(concern: string, symptom: string): boolean {
+  const label = symptom.replace(/\s*\([^)]*\)/g, "").toLocaleLowerCase();
+  const terms: Record<string, RegExp> = {
+    headache: /\bheadaches?\b/i,
+    "feeling cold or chills": /\b(?:cold|chills?|shivering)\b/i,
+    "feeling hot or feverish": /\b(?:fever|feverish|temperature|hot)\b/i,
+    "cramping": /\bcramp(?:ing)?\b/i,
+    "vomiting": /\b(?:vomit(?:ed|ing)?|threw up)\b/i,
+    "nausea": /\b(?:nausea|nauseous)\b/i,
+  };
+  const pattern = terms[label] ?? new RegExp(`\\b${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}\\b`, "i");
+  return pattern.test(concern);
+}
+
+function naturalSymptom(text: string): string {
+  if (/^feeling cold or chills$/i.test(text)) return "feeling cold or having chills";
+  if (/^headache$/i.test(text)) return "a headache";
+  return text.toLocaleLowerCase();
+}
+
+function joinNatural(items: string[]): string {
+  if (items.length < 2) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
+
 function pushSection(lines: string[], heading: string, facts: Array<{ text: string; sourceResponseIds: string[] }>, width: number): void {
   if (!facts.length) return;
   addHeading(lines, heading);
-  facts.forEach((fact) => appendWrapped(lines, `• ${fact.text}  ${formatSources(fact.sourceResponseIds)}`, width, "  "));
+  facts.forEach((fact) => appendWrapped(lines, `• ${fact.text}`, width, "  "));
 }
 
 function addHeading(lines: string[], heading: string): void {
   lines.push(heading.toLocaleUpperCase(), "");
-}
-
-function formatSources(ids: string[]): string {
-  return ids.map((id) => `[${id}]`).join(" ");
 }
 
 function appendWrapped(lines: string[], text: string, width: number, indent: string): void {
@@ -324,6 +452,7 @@ function validateBriefEvidence(brief: StructuredConsultationBrief, state: Intake
     ...brief.functionalImpact,
     ...brief.additionalSymptoms,
     ...brief.safetyRelevantStatements,
+    ...(brief.patientReportedNarrative ? [brief.patientReportedNarrative] : []),
   ];
   for (const fact of facts) {
     const sourceTexts = fact.sourceResponseIds.map((id) => responses.get(id));

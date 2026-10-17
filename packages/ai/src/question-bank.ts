@@ -48,7 +48,7 @@ export const QUESTION_BANK: readonly QuestionDefinition[] = [
   universal("episode_pattern", "episode_pattern", "establish_pattern", 28, "Has it been continuous, or does it come and go? If it comes and goes, how often and for how long?", "frequency"),
   universal("progression", "progression", "establish_course", 20, "Since it began, has it been getting better, worse, or staying about the same?", "free_text", true),
   universal("triggers_relief", "triggers_relief", "identify_patient_observed_factors", 45, "Have you noticed anything that seems to make it better or worse?", "free_text"),
-  universal("additional_symptoms", "additional_symptoms", "check_associated_symptoms", 30, "Have you noticed any other symptoms along with this?", "free_text", true),
+  { ...universal("additional_symptoms", "additional_symptoms", "check_associated_symptoms", 30, "Have you noticed any other symptoms along with this?", "free_text", true), followUpQuestion: "What other symptoms have you noticed?" },
   { ...universal("daily_impact", "daily_impact", "establish_impact", 40, "How has this affected your usual activities, if at all?", "free_text", true), followUpQuestion: "Could you tell me which usual activities, if any, have been harder because of this?" },
   universal("relevant_context", "relevant_context", "collect_patient_context", 70, "Is there any recent event or other context you think may be relevant?", "free_text"),
   universal("actions_taken", "actions_taken", "record_actions_taken", 75, "Have you already tried anything or sought advice for this?", "free_text"),
@@ -67,14 +67,15 @@ export const QUESTION_BANK: readonly QuestionDefinition[] = [
   categoryQuestion("respiratory_intake", "respiratory", "food_fluids", "check_intake", 55, "Have you been able to eat and drink as usual?", ["cough", "breathing", "fever", "weak"]),
   categoryQuestion("respiratory_temperature", "respiratory", "temperature_measurement", "separate_reported_from_measured_temperature", 35, "Have you measured your temperature? If so, what was the reading and when did you take it?", ["cough", "breathing", "fever", "cold", "chills"], "free_text"),
 
-  categoryQuestion("ent_location", "throat_nose_ear", "ent_location", "clarify_ent_concern", 18, "Which area is bothering you most, and what does it feel like?", ["throat", "nose", "ear", "sinus"]),
+  categoryQuestion("ent_location", "throat_nose_ear", "ent_location", "clarify_ent_concern", 18, "For the cold symptoms you mentioned, what are you noticing in your nose, throat, or ears?", ["throat", "nose", "ear", "sinus"]),
   categoryQuestion("ent_related", "throat_nose_ear", "ent_associated_features", "check_ent_features", 42, "Have you noticed any other changes around your throat, nose, or ears?", ["throat", "nose", "ear", "sinus"]),
   categoryQuestion("general_temperature", "general", "temperature_measurement", "separate_reported_from_measured_temperature", 35, "Have you measured your temperature? If so, what was the reading and when did you take it?", ["fever", "feverish", "cold", "chills", "weak", "fatigue"]),
   categoryQuestion("general_energy", "general", "energy_and_self_care", "clarify_general_impact", 38, "How has your energy affected getting up or taking care of your usual needs?", ["weak", "fatigue", "tired", "low energy", "sleepy"]),
   categoryQuestion("general_weakness_type", "general", "weakness_description", "distinguish_energy_from_strength", 12, "When you say you feel weak, do you mean unusually tired or low on energy, or that your muscles feel weak and moving is difficult?", ["weak", "weakness"]),
 
-  categoryQuestion("headache_location", "headache_neurological", "headache_location", "clarify_location", 17, "Where do you feel the headache, and does it stay there or move?", ["headache", "head pain", "migraine"]),
+  { ...categoryQuestion("headache_location", "headache_neurological", "headache_location", "clarify_location", 17, "Where do you feel the headache, and does it stay there or move?", ["headache", "head pain", "migraine"]), followUpQuestion: "I couldn’t tell which part your “yes” answered. Where is the headache, and does it stay in one place or move?" },
   categoryQuestion("headache_character", "headache_neurological", "headache_character", "describe_character", 19, "How would you describe the headache in your own words?", ["headache", "head pain", "migraine"]),
+  categoryQuestion("dizziness_description", "headache_neurological", "dizziness_description", "describe_dizziness", 18, "When you say dizzy, does it feel like spinning, lightheadedness, or being unsteady?", ["dizziness", "dizzy", "lightheaded", "unsteady"]),
   categoryQuestion("headache_severity", "headache_neurological", "headache_severity", "describe_severity", 34, "How severe does it feel to you, and what does that prevent you from doing?", ["headache", "head pain", "migraine"], "severity_description"),
   categoryQuestion("headache_associated", "headache_neurological", "headache_associated_changes", "check_related_changes", 41, "Have you noticed any other changes along with the headache?", ["headache", "head pain", "migraine"], "free_text", true),
 
@@ -117,9 +118,9 @@ export function questionIsRelevant(question: QuestionDefinition, categories: Sym
 }
 
 export const SYMPTOM_FIELD_LABELS: Readonly<Record<string, string>> = {
-  headache: "headache", nausea: "nausea", cough: "cough", sore_throat: "sore throat", runny_nose: "runny nose", cold_like_symptoms: "cold-like symptoms (patient-described)",
+  headache: "headache", dizziness: "dizziness or feeling unsteady", nausea: "nausea", cough: "cough", sore_throat: "sore throat", runny_nose: "runny nose", cold_like_symptoms: "cold-like symptoms (patient-described)",
   fever: "feeling hot or feverish", weakness: "weakness", body_aches: "body aches", chills: "feeling cold or chills",
-  stomach_pain: "stomach discomfort", diarrhea: "diarrhea", vomiting: "vomiting", eye_soreness: "eye soreness", visual_changes: "vision changes",
+  stomach_pain: "stomach discomfort", cramping: "cramping (location not specified)", diarrhea: "diarrhea", vomiting: "vomiting", eye_soreness: "eye soreness", visual_changes: "vision changes",
   skin_concern: "skin concern", urinary_concern: "urinary concern", musculoskeletal_concern: "muscle, joint, or back discomfort", chest_discomfort: "chest discomfort",
 };
 
@@ -132,10 +133,11 @@ export function getSymptomLabel(fieldId: string): string | undefined {
 }
 
 const SYMPTOM_FIELD_PATTERNS: Readonly<Record<string, RegExp>> = {
-  headache: /\bheadaches?\b/i, nausea: /\bnause(?:a|ous)\b/i, cough: /\bcough(?:ing)?\b/i,
+  headache: /\bheadaches?\b/i, dizziness: /\b(?:dizz(?:y|iness)|lightheaded|unsteady|room spinning|spinning sensation)\b/i, nausea: /\bnause(?:a|ous)\b/i, cough: /\bcough(?:ing)?\b/i,
   sore_throat: /\bsore throat\b/i, runny_nose: /\brunny nose\b/i, cold_like_symptoms: /\b(?:common cold|cold symptoms|colds|a cold)\b/i, fever: /\b(?:feverish|fever|feeling hot|feel hot|i am hot|i'm hot)\b/i,
   weakness: /\bweak(?:ness)?\b/i, body_aches: /\bbody aches?\b|\bmuscle aches?\b/i,
   chills: /\b(?:chills?|shivering|feeling cold|feel cold)\b/i, stomach_pain: /\b(?:stomach|abdominal|belly)\s+(?:ache|pain|cramp)s?\b|\b(?:my\s+)?(?:stomach|belly)\s+hurts\b/i,
+  cramping: /\bcramp(?:ing)?\b/i,
   diarrhea: /\b(?:diarrh?ea|loose stools?)\b/i, vomiting: /\b(?:vomit(?:ed|ing)?|threw up)\b/i,
   skin_concern: /\b(?:rash|itchy skin|hives|skin changes?)\b/i, urinary_concern: /\b(?:urine|urinary|urinating|urinate|bladder|pain when i pee)\b/i,
   musculoskeletal_concern: /\b(?:joint|muscle|back|neck|shoulder|knee|ankle)\s+(?:pain|ache|sore|stiff)?\b/i,
@@ -157,7 +159,7 @@ export function reportedSymptomFieldIds(input: { fields: Array<{ fieldId: string
   return [...reported];
 }
 
-export function isQuestionApplicable(question: QuestionDefinition, input: { concern: string; responses: Array<{ text: string }>; fields: Array<{ fieldId: string; status: string }> }): boolean {
+export function isQuestionApplicable(question: QuestionDefinition, input: { concern: string; responses: Array<{ text: string }>; fields: Array<{ fieldId: string; status: string; value?: string | null }> }): boolean {
   const text = `${input.concern}\n${input.responses.map((response) => response.text).join("\n")}`.toLowerCase();
   const fields = new Set(input.fields.filter((field) => !["patient_denied", "declined", "unknown", "not_asked", "not_answered"].includes(field.status)).map((field) => field.fieldId));
   const symptomIds = reportedSymptomFieldIds(input);
@@ -192,9 +194,19 @@ export function isQuestionApplicable(question: QuestionDefinition, input: { conc
   if (question.id === "general_energy") return has("weakness", "body_aches", "chills");
   if (question.id === "general_weakness_type") return has("weakness");
   if (question.category === "headache_neurological") {
+    if (question.id === "dizziness_description") return has("dizziness")
+      && !/\b(?:room (?:is )?spinning|spinning sensation|lightheaded|unsteady|off balance|about to faint)\b/i.test(text);
     if (!has("headache")) return false;
-    if (question.id === "headache_location") return !/\b(left|right|front|back|temple|both sides|one side|all over)\b/i.test(text);
-    if (question.id === "headache_character") return !/\b(throbbing|pounding|pressure|sharp|dull|aching|burning)\b/i.test(text);
+    if (question.id === "headache_location") {
+      const location = input.fields.find((field) => field.fieldId === "headache_location");
+      // A location answer is complete only when both the location and whether
+      // it moves are captured. Keep an unclear/contradictory partial answer open
+      // even when the raw transcript already contains a location word.
+      if (location && ["unclear", "conflicting"].includes(location.status)) return true;
+      if (location && ["reported", "patient_corrected", "patient_denied", "declined", "unknown", "not_answered", "not_asked"].includes(location.status)) return false;
+      return !/\b(left|right|front|back|temple|both sides|one side|all over)\b/i.test(text);
+    }
+    if (question.id === "headache_character") return !/\b(crushing|squeezing|throbbing|pounding|pressure|sharp|dull|aching|burning|tingling|stabbing)\b/i.test(text);
     if (question.id === "headache_severity") return /\b(severe|very painful|worst|hard to function|cannot work|can't work)\b/i.test(text);
     if (question.id === "headache_associated") return /\b(headache|migraine)\b/i.test(text) && !fields.has("additional_symptoms");
     return false;

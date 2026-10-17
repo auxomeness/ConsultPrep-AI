@@ -1,19 +1,24 @@
 import "server-only";
 import {
-  AmdChatClient,
   createAiService,
   InMemoryRetriever,
   emergencyContactFromEnvironment,
-  loadAmdConfig,
+  LocalQwenChatClient,
   type AiService,
 } from "@consultprep/ai";
 
 let servicePromise: Promise<AiService> | undefined;
 
-/** Use AMD as the only model provider for this server process. */
+/** Reuse one local model instance so its weights stay loaded between turns. */
 export function getAiService(): Promise<AiService> {
   servicePromise ??= InMemoryRetriever.create([], async () => []).then((retriever) =>
-    createAiService(new AmdChatClient(loadAmdConfig()), retriever, { emergencyContact: emergencyContactFromEnvironment() }),
+    (() => {
+      const client = new LocalQwenChatClient();
+      // Begin loading the local model during the opening request so its cold
+      // startup overlaps with the time spent reading the intake introduction.
+      void client.warmup().catch(() => undefined);
+      return createAiService(client, retriever, { emergencyContact: emergencyContactFromEnvironment() });
+    })(),
   ).catch((error: unknown) => {
     servicePromise = undefined;
     throw error;

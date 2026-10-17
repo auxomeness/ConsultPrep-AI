@@ -1,7 +1,147 @@
 import { describe, expect, it } from "vitest";
-import { extractPatientFacts } from "../src/intake-facts.js";
+import { extractPatientFacts, extractReportedTemperature } from "../src/intake-facts.js";
 
 describe("source-linked intake fact extraction", () => {
+  it("records a volunteered denial of other symptoms alongside reported symptoms", () => {
+    const facts = extractPatientFacts({
+      id: "r1",
+      text: "I have a crushing headache and cramping, and no other symptoms.",
+      sequence: 0,
+    }, "What have you been feeling?", "main_concern");
+    expect(facts).toContainEqual(expect.objectContaining({
+      fieldId: "additional_symptoms",
+      value: "No additional symptoms reported",
+      status: "patient_denied",
+      sourceResponseIds: ["r1"],
+    }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "headache", status: "reported" }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "cramping", status: "reported" }));
+  });
+
+  it.each([
+    ["midnight", "Midnight"],
+    ["around midnight", "Around midnight"],
+    ["at midnight", "At midnight"],
+    ["yesterday at midnight", "Yesterday at midnight"],
+    ["12 midnight", "Midnight"],
+    ["at 12 noon", "Noon"],
+    ["today around 12:30 am", "Today at 12:30 am"],
+    ["yesterday at 23:45", "Yesterday at 23:45"],
+    ["The headache began today at midnight.", "Today at midnight"],
+    ["2 am", "2 am"],
+    ["at 2:30 am", "At 2:30 am"],
+    ["12:00 a.m.", "12:00 am"],
+    ["around 23:45", "Around 23:45"],
+    ["00:30", "00:30"],
+    ["23:59", "23:59"],
+    ["noon", "Noon"],
+    ["earlier in the morning", "Earlier in the morning"],
+    ["early this morning", "Early this morning"],
+    ["this afternoon", "This afternoon"],
+    ["last night", "Last night"],
+    ["overnight", "Overnight"],
+    ["yesterday evening", "Yesterday evening"],
+    ["since Tuesday", "Tuesday"],
+    ["30 minutes ago", "About 30 minutes ago"],
+    ["around 3 hours ago", "About 3 hours ago"],
+    ["I felt this about 2 days ago", "About 2 days ago"],
+    ["just a while ago", "A little while ago"],
+    ["just a while a go", "A little while ago"],
+    ["a little while ago", "A little while ago"],
+    ["just now", "Just now"],
+    ["about half an hour ago", "About half an hour ago"],
+    ["a few hours", "For a few hours"],
+    ["for 3 days", "For 3 days"],
+    ["3 days", "For 3 days"],
+    ["when I woke up", "When patient woke up"],
+  ])("recognizes a short onset answer (%s) without asking for a restatement", (text, expected) => {
+    const facts = extractPatientFacts({
+      id: "onset-answer",
+      text,
+      sequence: 1,
+      questionBankId: "symptom_onset__headache",
+    }, "When did the headache begin?", "symptom_onset__headache");
+    expect(facts).toContainEqual({
+      fieldId: "symptom_onset_headache",
+      value: expected,
+      status: "reported",
+      sourceResponseIds: ["onset-answer"],
+    });
+  });
+
+  it.each([
+    ["I don't know", "unknown"],
+    ["not sure", "unknown"],
+    ["prefer not to say", "declined"],
+    ["none", "unknown"],
+  ])("does not invent an onset when the answer is %s", (text, status) => {
+    const facts = extractPatientFacts({
+      id: "uncertain-onset",
+      text,
+      sequence: 1,
+      questionBankId: "symptom_onset__headache",
+    }, "When did the headache begin?", "symptom_onset__headache");
+    expect(facts).toContainEqual({
+      fieldId: "symptom_onset_headache",
+      value: null,
+      status,
+      sourceResponseIds: ["uncertain-onset"],
+    });
+  });
+
+  it("prefers the stated start time when another time appears in the same answer", () => {
+    const facts = extractPatientFacts({
+      id: "two-times",
+      text: "I felt unwell today, but the headache started yesterday evening.",
+      sequence: 1,
+    }, "What have you been feeling?");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: "Yesterday evening" }));
+  });
+
+  it("does not treat a negated time as the onset when a later positive time is given", () => {
+    const facts = extractPatientFacts({
+      id: "negated-time",
+      text: "It did not begin at midnight; it started earlier in the morning.",
+      sequence: 1,
+      questionBankId: "symptom_onset__headache",
+    }, "When did the headache begin?", "symptom_onset__headache");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: "Earlier in the morning" }));
+  });
+
+  it.each([
+    "I don't think it began at midnight.",
+    "It did not start at midnight.",
+    "Not at midnight.",
+  ])("does not record a negated onset time as fact (%s)", (text) => {
+    const facts = extractPatientFacts({
+      id: "negated-onset",
+      text,
+      sequence: 1,
+      questionBankId: "symptom_onset__headache",
+    }, "When did the headache begin?", "symptom_onset__headache");
+    expect(facts).not.toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", status: "reported" }));
+  });
+
+  it("keeps the confirmed time in a correction even when the answer mentions denial first", () => {
+    const facts = extractPatientFacts({
+      id: "corrected-onset",
+      text: "Not midnight; it started around 2 am.",
+      sequence: 2,
+      correctsResponseId: "response-1",
+    }, "Does the summary look right?", "summary_confirmation");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "onset", value: "Around 2 am", status: "patient_corrected" }));
+  });
+
+  it("does not interpret a bare time as onset when the active question is about something else", () => {
+    const facts = extractPatientFacts({
+      id: "other-question",
+      text: "midnight",
+      sequence: 1,
+      questionBankId: "additional_symptoms",
+    }, "Have you noticed any other symptoms?");
+    expect(facts.some((field) => field.fieldId === "onset")).toBe(false);
+  });
+
   it("extracts eye soreness, onset, and blurry vision separately from one response", () => {
     const facts = extractPatientFacts({
       id: "r1",
@@ -19,6 +159,46 @@ describe("source-linked intake fact extraction", () => {
     expect(facts).toContainEqual({ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["multi"] });
     expect(facts).toContainEqual({ fieldId: "onset", value: "Yesterday", status: "reported", sourceResponseIds: ["multi"] });
     expect(facts).toContainEqual({ fieldId: "progression", value: "Worsening", status: "reported", sourceResponseIds: ["multi"] });
+  });
+
+  it("applies a volunteered shared onset to each symptom when the patient says they felt this then", () => {
+    const facts = extractPatientFacts({
+      id: "shared-onset",
+      text: "I have a headache with chills and fever. I felt this around 3 hours ago.",
+      sequence: 0,
+    }, "What have you been feeling?");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: "About 3 hours ago" }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_chills", value: "About 3 hours ago" }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_fever", value: "About 3 hours ago" }));
+  });
+
+  it("applies a single 'it started' timeline to symptoms listed together in the same message", () => {
+    const facts = extractPatientFacts({
+      id: "anaphoric-shared-onset",
+      text: "I have a headache, chills, a temperature of 37.5 C, and it started about 3 hours ago.",
+      sequence: 0,
+    }, "What have you been feeling?", "main_concern");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: "About 3 hours ago" }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_chills", value: "About 3 hours ago" }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "temperature_measurement", value: expect.stringContaining("37.5") }));
+  });
+
+  it("applies a shared midnight onset to a headache and unspecified cramping", () => {
+    const facts = extractPatientFacts({
+      id: "headache-cramping-midnight",
+      text: "I have a crushing headache and cramping I can't describe well. It began around midnight.",
+      sequence: 0,
+      questionBankId: "main_concern",
+    }, "What have you been feeling?", "main_concern");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: "Around midnight" }));
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_cramping", value: "Around midnight" }));
+  });
+
+  it("does not attach an approximate onset time to a separately stated temperature", () => {
+    expect(extractReportedTemperature("I have a headache, chills, a temperature of 37.5 C, and it started about 3 hours ago."))
+      .toBe("Temperature reading: 37.5 °C");
+    expect(extractReportedTemperature("I think my temperature is 37.5 C."))
+      .toBe("Temperature reading: 37.5 °C (uncertain or approximate, as reported)");
   });
 
   it("keeps separate symptom timelines when one answer gives different start times", () => {
@@ -49,6 +229,27 @@ describe("source-linked intake fact extraction", () => {
   it("recognizes common past-tense wording for vomiting", () => {
     const facts = extractPatientFacts({ id: "r1", text: "I vomited earlier", sequence: 0 }, "What have you been feeling?");
     expect(facts).toContainEqual({ fieldId: "vomiting", value: "Vomiting", status: "reported", sourceResponseIds: ["r1"] });
+  });
+
+  it.each(["yes", "yeah", "no", "nope"])("does not treat a bare %s as a headache location", (text) => {
+    const facts = extractPatientFacts({
+      id: "location-short-answer",
+      text,
+      sequence: 1,
+      questionBankId: "headache_location",
+    }, "Where do you feel the headache, and does it stay there or move?", "headache_location");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "headache_location", value: null, status: expect.stringMatching(/^(?:unclear|unknown)$/) }));
+  });
+
+  it("records no additional headache changes without removing the headache itself", () => {
+    const facts = extractPatientFacts({
+      id: "no-changes",
+      text: "nothing, just headache",
+      sequence: 2,
+      questionBankId: "headache_associated",
+    }, "Have you noticed any other changes along with the headache?", "headache_associated");
+    expect(facts).toContainEqual(expect.objectContaining({ fieldId: "headache_associated_changes", status: "patient_denied", value: "No other changes reported; headache remains" }));
+    expect(facts).not.toContainEqual(expect.objectContaining({ fieldId: "headache", status: "patient_denied" }));
   });
 
   it("records explicit symptom denials without treating them as reported symptoms", () => {

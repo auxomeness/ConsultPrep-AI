@@ -48,7 +48,7 @@ describe("structured consultation brief", () => {
     expect(rendered.replace(/\s+/g, " ")).toContain("does not replace assessment by a qualified healthcare professional");
   });
 
-  it("renders a scan-friendly, wrapped terminal summary with compact source references", () => {
+  it("renders a scan-friendly patient-facing summary without internal response IDs", () => {
     const state = stateFromResponses([
       "I feel hot and have a headache that has been bothering me all day",
       "It started earlier today and is getting worse",
@@ -59,10 +59,35 @@ describe("structured consultation brief", () => {
     const rendered = formatStructuredBrief(buildStructuredBrief(state, true));
     expect(rendered).toContain("CONSULTPREP  |  PRE-CONSULTATION SUMMARY");
     expect(rendered).toContain("CONFIRMED BY PATIENT · DRAFT FOR CLINICIAN REVIEW");
-    expect(rendered).toContain("[r1]");
-    expect(rendered).toContain("YOUR ORIGINAL ANSWERS");
+    expect(rendered).not.toContain("[r1]");
+    expect(rendered).not.toContain("response-1");
+    expect(rendered).not.toContain("YOUR ORIGINAL ANSWERS");
     expect(rendered).toContain("HANDOFF STATUS");
     expect(rendered.split("\n").every((line) => line.length <= 76)).toBe(true);
+  });
+
+  it("creates a sourced patient-reported narrative without duplicating identical onset details", () => {
+    const state = stateFromResponses(["I have a headache and vomiting", "Headache began earlier this morning", "Vomiting began just a while ago"]);
+    state.fields = mergeFieldUpdates(state.fields, [
+      { fieldId: "symptom_onset_headache", value: "Earlier this morning", status: "reported", sourceResponseIds: ["r2"] },
+      { fieldId: "symptom_onset_vomiting", value: "A little while ago", status: "reported", sourceResponseIds: ["r3"] },
+      { fieldId: "headache_character", value: "Crushing in my head", status: "reported", sourceResponseIds: ["r1"] },
+      { fieldId: "headache_location", value: null, status: "unclear", sourceResponseIds: ["r1"] },
+    ]);
+    const brief = buildStructuredBrief(state);
+    expect(brief.patientReportedNarrative?.text).toContain("headache");
+    expect(brief.patientReportedNarrative?.text).toContain("vomiting");
+    expect(brief.patientReportedNarrative?.text).toContain("Crushing in my head");
+    expect(brief.patientReportedNarrative?.sourceResponseIds).toEqual(expect.arrayContaining(["r1", "r2", "r3"]));
+    expect(brief.symptomTimeline.filter((fact) => fact.text.startsWith("Onset:")).length).toBe(0);
+  });
+
+  it("preserves when the patient says they cannot describe a symptom clearly", () => {
+    const state = stateFromResponses(["I have a crushing headache and cramping I can't describe well."]);
+    const brief = buildStructuredBrief(state);
+
+    expect(brief.patientReportedNarrative?.text).toMatch(/cramping hard to describe clearly/i);
+    expect(brief.patientReportedNarrative?.sourceResponseIds).toContain("r1");
   });
 
   it("uses a short narrative, symptom bullets, action history, and separate sourced comfort information", () => {
@@ -76,7 +101,8 @@ describe("structured consultation brief", () => {
     ]);
     const rendered = formatStructuredBrief(buildStructuredBrief(state));
     expect(rendered).toContain("OVERVIEW");
-    expect(rendered).toContain("You came to organize a concern about");
+    expect(rendered).toContain("I’m seeking advice about");
+    expect(rendered).not.toContain("The patient");
     expect(rendered).toContain("SYMPTOMS YOU REPORTED");
     expect(rendered).toContain("SYMPTOM DETAILS");
     expect(rendered).toContain("Symptom Location: It stays at the front of my head");
@@ -100,7 +126,7 @@ describe("structured consultation brief", () => {
     const state = stateFromResponses(["My head hurts"]);
     const brief = buildStructuredBrief(state, true);
     expect(brief.status).toBe("patient_confirmed");
-    expect(formatStructuredBrief(brief)).toContain("Patient confirmation: confirmed locally.");
+    expect(formatStructuredBrief(brief)).toContain("Patient confirmation: confirmed by you.");
     expect(brief.clinicianReviewStatus).toBe("not_available");
   });
 

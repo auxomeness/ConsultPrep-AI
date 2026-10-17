@@ -118,14 +118,12 @@ describe("patient-centered orchestration regression cases", () => {
     expect(brief.intakeCompleteness.reviewStatus).toBe("provisional_requires_clinician_review");
   });
 
-  it("J: a provider timeout keeps the direct request and patient evidence available", async () => {
+  it("J: a provider timeout surfaces an explicit failure without fabricating an answer", async () => {
     const complete = vi.fn().mockRejectedValue(new AiServiceError("timeout", "Synthetic timeout"));
     const service = createAiService({ complete } as ChatCompleter, await guidance());
     const state = makeState(["I have a cough.", "What should I do?"], ["main_concern", "other"]);
-    const result = await service.continueIntake({ state, latestResponseId: "r2" });
-    if ("safety" in result) throw new Error("Expected a safe recovery reply.");
-    expect(result.assistantMessage).toMatch(/looking for guidance/i);
-    expect(result.guidanceProvided?.sourceResponseIds).toEqual(["r2"]);
+    await expect(service.continueIntake({ state, latestResponseId: "r2" })).rejects.toMatchObject({ code: "timeout" });
+    expect(complete).toHaveBeenCalledTimes(1);
     expect(state.responses[0]?.text).toBe("I have a cough.");
   });
 
@@ -136,14 +134,17 @@ describe("patient-centered orchestration regression cases", () => {
   });
 
   it("records a provider-finding request without implying a directory or booking integration", async () => {
-    const complete = vi.fn();
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({
+      assistantMessage: "I can’t search for or book a clinician in this demo. You can contact a local clinic or your usual healthcare provider.",
+      askedQuestion: null,
+    }));
     const service = createAiService({ complete } as ChatCompleter, await guidance());
     const state = makeState(["Please find me a cardiologist."], ["main_concern"]);
     const result = await service.continueIntake({ state, latestResponseId: "r1" });
     if ("safety" in result) throw new Error("Expected a workflow response.");
-    expect(result.assistantMessage).toMatch(/can’t find or book nearby services/i);
+    expect(result.assistantMessage).toMatch(/can’t search for or book a clinician/i);
     expect(result.fieldUpdates).toContainEqual(expect.objectContaining({ fieldId: "patient_goal", sourceResponseIds: ["r1"] }));
-    expect(complete).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 
   it("moves a typed /summary request to review instead of treating it as a symptom answer", async () => {
@@ -151,7 +152,8 @@ describe("patient-centered orchestration regression cases", () => {
     const state = makeState(["I have a cough.", "/summary"], ["main_concern", "other"]);
     const result = await service.continueIntake({ state, latestResponseId: "r2" });
     if ("safety" in result) throw new Error("Expected review handling.");
-    expect(result.assistantMessage).toMatch(/draft summary is ready to review/i);
+    expect(result.assistantMessage).toMatch(/draft summary to review and share with your doctor/i);
+    expect(result.assistantMessage).toMatch(/cough/i);
     expect(result.askedQuestion).toBeNull();
   });
 

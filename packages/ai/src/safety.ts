@@ -1,7 +1,9 @@
 import type { IntakeState, SafetyEvent } from "./contracts.js";
 
 /**
- * Prototype safety routing for the explicitly documented synthetic triggers.
+ * Prototype safety routing for the explicitly documented high-risk triggers.
+ * Headache urgency follows MedlinePlus danger signs: sudden/worst-ever severe
+ * headache, neurologic changes, fever with stiff neck, or repeated vomiting.
  * The inability-to-move message is informed by MedlinePlus emergency guidance:
  * https://www.medlineplus.gov/ency/patientinstructions/000593.htm
  * Breathlessness with palpitations routing follows NHS and MedlinePlus emergency guidance:
@@ -103,20 +105,36 @@ function headacheEmergencyEvidence(responses: IntakeState["responses"]): { ruleI
     return [response.id];
   }));
   const headache = findSources(/\b(?:headache|head pain|migraine)\b/i);
-  const severe = findSources(/\b(?:crushing(?:\s+my)?\s+(?:skull|head)|worst(?:\s+ever)?\s+headache|severe|extreme(?:ly)?|unbearable|intense)\b/i, true);
-  const weakness = findSources(/\b(?:weak(?:ness)?|unable to move|can'?t move|difficulty moving)\b/i);
-  const vomiting = findSources(/\b(?:vomit(?:ed|ing)?|threw up)\b/i);
+  const severe = new Set(responses.flatMap((response) => {
+    const text = response.text;
+    const namesHeadache = /\b(?:headache|head pain|migraine)\b/i.test(text)
+      || /^headache_(?:character|severity)$/.test(response.questionBankId ?? "")
+      || (response.questionBankId?.startsWith("symptom_onset__") && response.questionBankId.includes("headache"));
+    const severityPattern = /\b(?:worst(?:\s+ever)?\s+headache|(?:headache|head pain|migraine)\s+(?:is|was|feels|felt|became|got|has been|has become)\s+(?:the\s+)?worst(?:\s+ever)?|(?:severe|extreme(?:ly)?|unbearable|intense)\s+(?:headache|head pain|migraine)|(?:headache|head pain|migraine)\s+(?:is|was|feels|felt|became|got|has been|has become)\s+(?:(?:very|really)\s+)?(?:severe|extreme(?:ly)?|unbearable|intense))\b/i;
+    const severityScalePattern = /\b(?:severe|extreme|unbearable|intense|worst|10\s*\/\s*10|9\s*\/\s*10)\b/i;
+    const explicitSeverity = hasUnnegatedMatch(text, severityPattern)
+      || (/^headache_severity$/.test(response.questionBankId ?? "") && hasUnnegatedMatch(text, severityScalePattern));
+    return namesHeadache && explicitSeverity ? [response.id] : [];
+  }));
+  const focalNeurologic = findSources(/\b(?:weakness|numbness|loss of feeling)\s+(?:on|in)\s+(?:my\s+)?(?:one|left|right)\s+side\b|\b(?:one-sided|left-sided|right-sided)\s+(?:weakness|numbness)\b|\b(?:slurred speech|trouble speaking|difficulty speaking|loss of balance|new vision loss|confusion)\b/i);
+  const repeatedVomiting = findSources(/\b(?:repeated(?:ly)?|multiple times|several times|over and over|nonstop|non-stop|kept)\s+(?:vomit(?:ing|ed)?|throwing up)\b|\b(?:vomit(?:ed|ing)?|threw up)\s+(?:again|repeatedly|multiple times|several times|more than once|twice|\d+\s+times)\b/i);
   const sudden = findSources(/\b(?:sudden(?:ly)?|abrupt(?:ly)?)\b/i, true);
-  if (!headache.size || !severe.size) return null;
-  const hasWeakness = weakness.size > 0;
-  const hasVomiting = vomiting.size > 0;
-  const hasSudden = sudden.size > 0;
-  if (!hasWeakness && !hasVomiting && !hasSudden) return null;
-  const ruleId = hasWeakness && hasVomiting
-    ? "severe_headache_with_weakness_and_vomiting"
-    : hasSudden ? "sudden_severe_headache"
-      : "severe_headache_with_associated_symptom";
-  const relevant = [headache, severe, ...(hasWeakness ? [weakness] : []), ...(hasVomiting ? [vomiting] : []), ...(hasSudden ? [sudden] : [])];
+  if (!headache.size) return null;
+  const feverAndStiffNeck = findSources(/\b(?:fever|feverish|high temperature|high fever)\b/i).size > 0
+    && findSources(/\b(?:stiff neck|neck stiffness|cannot bend my neck|can't bend my neck)\b/i).size > 0;
+  const hasSuddenSevere = severe.size > 0 && sudden.size > 0;
+  const hasSevereNeurologic = severe.size > 0 && focalNeurologic.size > 0;
+  const hasSevereRepeatedVomiting = severe.size > 0 && repeatedVomiting.size > 0;
+  if (!hasSuddenSevere && !hasSevereNeurologic && !hasSevereRepeatedVomiting && !feverAndStiffNeck) return null;
+  const ruleId = hasSuddenSevere ? "sudden_severe_headache"
+    : hasSevereNeurologic ? "severe_headache_with_focal_neurologic_symptom"
+      : hasSevereRepeatedVomiting ? "severe_headache_with_repeated_vomiting"
+        : "headache_with_fever_and_stiff_neck";
+  const relevant = [headache, ...(severe.size ? [severe] : []), ...(focalNeurologic.size ? [focalNeurologic] : []), ...(repeatedVomiting.size ? [repeatedVomiting] : [])];
+  if (feverAndStiffNeck) {
+    relevant.push(findSources(/\b(?:fever|feverish|high temperature|high fever)\b/i));
+    relevant.push(findSources(/\b(?:stiff neck|neck stiffness|cannot bend my neck|can't bend my neck)\b/i));
+  }
   return { ruleId, matchedResponseIds: [...new Set(relevant.flatMap((sources) => [...sources]))] };
 }
 
@@ -137,11 +155,8 @@ export function urgentGuidanceForText(text: string, emergencyContact: EmergencyC
 }
 
 function urgentGuidanceForRule(ruleId: string, emergencyContact: EmergencyContactConfig = DEFAULT_EMERGENCY_CONTACT): string {
-  if (ruleId === "severe_headache_with_weakness_and_vomiting") {
-    return `I’m concerned about the severe headache you described, together with weakness and vomiting. These symptoms can be serious and need urgent medical assessment. Please call ${emergencyContact.number} ${emergencyContact.region} now, or ask someone nearby to call for you. You can also have someone help you get to the nearest hospital emergency department immediately. Do not drive yourself if you feel weak or severely unwell. Please don’t wait to finish this questionnaire before getting help. This tool cannot assess or rule out an emergency.`;
-  }
-  if (ruleId === "severe_headache_with_associated_symptom" || ruleId === "sudden_severe_headache") {
-    return `I’m concerned about the severe headache you described${ruleId === "severe_headache_with_associated_symptom" ? " together with another symptom" : " with a sudden onset"}. This can need urgent medical assessment. Please contact ${emergencyContact.number} ${emergencyContact.region} now or seek urgent medical care. Ask someone nearby to help, and do not drive yourself if you feel unwell. Please don’t wait to finish this questionnaire before getting help. This tool cannot assess or rule out an emergency.`;
+  if (ruleId === "sudden_severe_headache" || ruleId === "severe_headache_with_focal_neurologic_symptom" || ruleId === "severe_headache_with_repeated_vomiting" || ruleId === "headache_with_fever_and_stiff_neck") {
+    return `I’m concerned because you described a headache with a warning sign that needs urgent medical assessment. Please call ${emergencyContact.number} ${emergencyContact.region} now, or ask someone nearby to call. You can also have someone help you get to the nearest hospital emergency department immediately. Do not drive yourself if you feel unwell. Please don’t wait to finish this questionnaire before getting help. This tool cannot assess or rule out an emergency.`;
   }
   if (ruleId === "eye_symptoms_with_visual_change_requires_urgent_assessment") {
     return "I’m sorry you’re dealing with this. Eye soreness together with a change in vision should be assessed urgently by an eye-care professional today. If you have sudden vision loss, severe eye pain, or an eye injury, seek emergency medical care now. I’m stopping the intake so you can focus on getting help.";
