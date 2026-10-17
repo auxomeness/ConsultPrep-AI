@@ -15,7 +15,7 @@ import {
 import { AiServiceError } from "./errors.js";
 import type { ChatCompleter, ChatMessage } from "./amd-client.js";
 import type { InMemoryRetriever, RetrievedChunk } from "./rag.js";
-import { assessSafety } from "./safety.js";
+import { assessSafety, DEFAULT_EMERGENCY_CONTACT, type EmergencyContactConfig } from "./safety.js";
 import { CONTINUE_OUTPUT_INSTRUCTIONS, QUESTION_ANSWER_INSTRUCTIONS, SYSTEM_INSTRUCTIONS } from "./prompts.js";
 import { classifyQuestionScope, isContextualFollowUp, isPersonalizedDiagnosisOrTreatmentRequest, OUT_OF_SCOPE_ANSWER, PERSONALIZED_MEDICAL_ANSWER } from "./scope.js";
 import { urgentGuidanceForText } from "./safety.js";
@@ -23,6 +23,9 @@ import { extractPatientFacts, factIsSufficient, mergeFieldUpdates, targetForQues
 import { detectSymptomCategories, getSymptomLabel, isQuestionApplicable, QUESTION_BANK, questionIsRelevant, reportedSymptomFieldIds, type QuestionDefinition } from "./question-bank.js";
 import { buildStructuredBrief } from "./brief.js";
 import { assessIntakeCompleteness } from "./completeness.js";
+import { classifyConversationIntent, type ConversationIntent } from "./conversation.js";
+import { assessPromptAssessmentNeed } from "./safety.js";
+import { interruptIntakeForSafety } from "./workflow.js";
 
 export interface AiService {
   startIntake(): StartIntakeResult;
@@ -67,7 +70,7 @@ export function nextRequiredInterviewQuestion(state: IntakeState): string | null
 }
 
 export function planNextQuestion(state: IntakeState): PlannedQuestion | null {
-  if (state.completion === "completed") return null;
+  if (state.completion === "completed" || state.completion === "emergency_interrupted" || state.safety?.routed) return null;
   const completeness = assessIntakeCompleteness(state);
   if (completeness.status === "potentially_urgent") return null;
   if (/^\s*(?:none|nothing|no symptoms|i have no symptoms|i don'?t have any symptoms)[.!\s]*$/i.test(state.responses[0]?.text ?? "")) return null;
@@ -89,6 +92,7 @@ export function planNextQuestion(state: IntakeState): PlannedQuestion | null {
     });
     const needsOnsetClarification = unclearOnsetIds.length > 0;
     const prior = (state.questionHistory ?? []).filter((item) => item.questionId === candidate.id).at(-1);
+    if (candidate.id === "general_weakness_type" && prior && ["requires_clarification", "partially_answered"].includes(prior.status)) return null;
     if (factIsSufficient(field) && !needsOnsetClarification) return null;
     if (needsOnsetClarification) {
       const labels = unclearOnsetIds.map((id) => getSymptomLabel(id) ?? id.replace(/_/g, " "));
@@ -241,7 +245,8 @@ function hasAnsweredCategory(state: IntakeState, category: InterviewCategory): b
   return /\b(cannot move|can't move|unable to move|unable to get up|can't get up|cannot get up|need to lie down|want to (?:lie|lay) down|can't do (?:my|usual) activities|cannot do (?:my|usual) activities|affecting my|affects my|hard to (?:walk|stand|move|work|sleep|eat)|interferes with|difficulty reading|can't read|cannot read|difficulty walking)\b/i.test(allResponses);
 }
 
-export function createAiService(client: ChatCompleter, retriever: InMemoryRetriever): AiService {
+export function createAiService(client: ChatCompleter, retriever: InMemoryRetriever, options: { emergencyContact?: EmergencyContactConfig } = {}): AiService {
+  const emergencyContact = options.emergencyContact ?? DEFAULT_EMERGENCY_CONTACT;
   return {
     startIntake() {
       const assistantMessage = "Hi. I’ll ask a few short questions to help organize what you’d like to discuss with a healthcare professional. What have you been feeling? Share only what you’re comfortable including.";
@@ -278,7 +283,7 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
       const retrievalQuery = [...conversationHistory.flatMap((turn) => [turn.question, turn.answer]), question].join("\n");
       const context = scope === "system" ? await retriever.search(retrievalQuery, 4) : [];
       const messages = buildMessages(QUESTION_ANSWER_INSTRUCTIONS, context, { question, answerMode: scope, conversationHistory });
-      const output = parseModelJson(await client.complete(messages, { maxTokens: 800 }));
+      const output = parseModelJson(await client.complete(messages, { maxTokens: 450, reasoningEffort: "none" }));
       try {
         return QuestionAnswerResultSchema.parse({ ...output as Record<string, unknown>, scope });
       } catch {
@@ -289,11 +294,21 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
     async continueIntake(rawInput, signal) {
       const input = ContinueIntakeInputSchema.parse(rawInput);
       const state = validateIntakeState(input.state);
+      if (state.completion === "emergency_interrupted" || state.safety?.routed) {
+        const safety = state.safety?.routed ? state.safety : assessSafety(state, emergencyContact);
+        const persistentSafety = safety.routed ? safety : {
+          routed: true,
+          ruleId: "emergency_interruption_persisted",
+          guidance: "This intake was interrupted for urgent medical guidance. Please contact emergency services or seek urgent medical help. This tool cannot assess or rule out an emergency.",
+          matchedResponseIds: state.responses.at(-1) ? [state.responses.at(-1)!.id] : [],
+        };
+        return { safety: persistentSafety, state: interruptIntakeForSafety(state, persistentSafety) };
+      }
       if (state.completion === "completed") {
         return NextTurnResultSchema.parse({ assistantMessage: "This intake is complete.", askedQuestion: null, askedQuestionId: null, fieldUpdates: [] });
       }
-      const safety = assessSafety(state);
-      if (safety.routed) return { safety, state: { ...state, safety, completion: "ready_for_review" } };
+      const safety = assessSafety(state, emergencyContact);
+      if (safety.routed) return { safety, state: interruptIntakeForSafety(state, safety) };
 
       const latest = input.latestResponseId
         ? state.responses.find((response) => response.id === input.latestResponseId)
@@ -301,32 +316,67 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
       if (input.latestResponseId && !latest) throw new AiServiceError("invalid_request", "latestResponseId is not in the intake state.");
 
       const previousQuestion = state.questionsAsked.at(-1) ?? "";
+      const intent = latest ? classifyConversationIntent({ text: latest.text, isFirstPatientTurn: state.responses.length === 1 }) : "continue";
+      if (latest && intent === "finish" && isContextualFinish(latest.text, state.activeQuestionId)) {
+        return NextTurnResultSchema.parse({
+          assistantMessage: "Understood. I’ll stop the intake questions here. You can review the draft summary and correct anything that needs changing.",
+          askedQuestion: null,
+          askedQuestionId: null,
+          fieldUpdates: [],
+        });
+      }
+      if (latest && intent === "summary") {
+        return NextTurnResultSchema.parse({
+          assistantMessage: "Your draft summary is ready to review. Check it for accuracy and correct anything that doesn’t reflect what you meant.",
+          askedQuestion: null,
+          askedQuestionId: null,
+          fieldUpdates: [],
+        });
+      }
+      if (latest && intent === "care_service_request") {
+        const fieldUpdates = extractPatientFacts(latest, previousQuestion, latest.questionBankId ?? state.activeQuestionId);
+        const question = "I can note this request for your consultation, but this demo can’t find or book nearby services. Would you like to add anything about why you’re looking for this service?";
+        return NextTurnResultSchema.parse({ assistantMessage: question, askedQuestion: question, askedQuestionId: "patient_goal", fieldUpdates });
+      }
+      if (latest && (intent === "greeting" || intent === "vague_opening" || intent === "ambiguous_opening" || intent === "identity_question")) {
+        const response = intent === "greeting"
+          ? "Hi. I’m ConsultPrep, an AI assistant that helps organize what you share for a healthcare professional. What health concern would you like to talk through today?"
+          : intent === "identity_question"
+            ? "I’m ConsultPrep, an AI assistant—not a doctor. I can help organize what you share into a draft for a healthcare professional. What would you like to talk about today?"
+            : "I’m here to help. Could you tell me a little more about what you’re experiencing or what you’d like help with? You can start wherever feels easiest.";
+        return NextTurnResultSchema.parse({ assistantMessage: response, askedQuestion: extractLastQuestion(response), askedQuestionId: "main_concern", fieldUpdates: [] });
+      }
       if (latest && isNoAdditionalSymptomsReply(latest.text) && previousQuestion) {
         const extracted = extractPatientFacts(latest, previousQuestion, latest.questionBankId ?? state.activeQuestionId);
         const legacyContext = !latest.questionBankId && !state.activeQuestionId ? contextualNoneField(previousQuestion, latest.id) : [];
         const fieldUpdates = mergeFieldUpdates(extracted, legacyContext);
         const updatedState = { ...state, fields: mergeFieldUpdates(state.fields, fieldUpdates) };
         const nextPlan = planNextQuestion(updatedState);
-        const completionWasAlreadyAsked = state.questionsAsked.some((question) => normalizeQuestion(question) === normalizeQuestion(COMPLETENESS_QUESTION));
-        if (!nextPlan && completionWasAlreadyAsked) {
-          return NextTurnResultSchema.parse({
-            assistantMessage: "Thanks, I’ve noted that. You can add anything else you’d like, or review the draft summary below.",
-            askedQuestion: null,
-            askedQuestionId: null,
-            fieldUpdates,
-          });
-        }
-        const nextQuestion = nextPlan?.question ?? COMPLETENESS_QUESTION;
+        const isOpeningDenial = /\bwhat have you been feeling|what symptoms are you experiencing|what brings you in\b/i.test(previousQuestion);
+        const nextQuestion = nextPlan?.question ?? (isOpeningDenial ? COMPLETENESS_QUESTION : null);
         return NextTurnResultSchema.parse({
-          assistantMessage: `Understood. ${nextQuestion}`,
+          assistantMessage: nextQuestion ? `Understood. ${nextQuestion}` : "Understood. I’ve noted that. You can review the draft summary whenever you’re ready.",
           askedQuestion: nextQuestion,
-          askedQuestionId: nextPlan?.questionId ?? "completion_check",
+          askedQuestionId: nextPlan?.questionId ?? null,
           fieldUpdates,
         });
       }
 
       const extractedFacts = latest ? extractPatientFacts(latest, previousQuestion, latest.questionBankId ?? state.activeQuestionId) : [];
       const currentState = { ...state, fields: mergeFieldUpdates(state.fields, extractedFacts) };
+
+      // Most patient turns are short answers to the current interview question.
+      // The application already selects the next question deterministically, so
+      // spending an AMD inference request to rephrase that same question adds
+      // latency without adding useful information.
+      const directPatientRequest = Boolean(latest && (isDirectQuestion(latest.text)
+        || ["guidance_request", "personal_concern", "workflow_question", "frightened_about_dying"].includes(intent)));
+      if (latest && !directPatientRequest) {
+        if (intent === "unclear" || intent === "decline" || !hasUsableAnswer(latest.text, extractedFacts)) {
+          return makeClarificationTurn(currentState, extractedFacts, intent);
+        }
+        return makeFallbackIntakeTurn(latest.text, currentState, extractedFacts);
+      }
 
       // Patient symptom turns do not benefit from the project-only knowledge base.
       // Skipping local embedding and irrelevant RAG context keeps this path faster.
@@ -335,31 +385,42 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
         latestResponse: latest ?? null,
         alreadyCovered: summarizeCoveredTopics(state.responses.map((response) => response.text).join("\n")),
         questionsAlreadyAsked: state.questionsAsked.slice(-12),
+        patientIntent: intent,
+        promptAssessment: assessPromptAssessmentNeed(currentState),
+        selectedNextQuestion: planNextQuestion(currentState),
       });
       const allowedIds = new Set(state.responses.map((response) => response.id));
       let content: string;
       try {
-        content = await client.complete(messages, { maxTokens: 600, ...(signal ? { signal } : {}) });
+        content = await client.complete(messages, {
+          maxTokens: 350,
+          reasoningEffort: "none",
+          ...(signal ? { signal } : {}),
+        });
       } catch (error) {
         if (error instanceof AiServiceError && ["invalid_credentials", "rate_limited", "timeout", "provider_unavailable"].includes(error.code)) {
-          return makeFallbackIntakeTurn(latest?.text ?? "", currentState, extractedFacts);
+          return directPatientRequest
+            ? makeDirectRequestFailureTurn(currentState, extractedFacts, latest?.id, intent)
+            : makeFallbackIntakeTurn(latest?.text ?? "", currentState, extractedFacts);
         }
         throw error;
       }
       try {
-      return normalizeNextTurn(parseModelJson(content), allowedIds, currentState, extractedFacts);
+        return normalizeNextTurn(parseModelJson(content), allowedIds, currentState, extractedFacts, intent, latest?.id);
       } catch (error) {
         if (!(error instanceof AiServiceError) || error.code !== "invalid_response") throw error;
         // Do not spend another inference request trying to repair malformed output.
         // Keep the interview moving with a safe clarification and no extracted facts.
-        return makeFallbackIntakeTurn(latest?.text ?? "", currentState, extractedFacts);
+        return directPatientRequest
+          ? makeDirectRequestFailureTurn(currentState, extractedFacts, latest?.id, intent)
+          : makeFallbackIntakeTurn(latest?.text ?? "", currentState, extractedFacts);
       }
     },
 
     async generateBrief(rawInput) {
       const input = GenerateBriefInputSchema.parse(rawInput);
       const state = validateIntakeState(input.state);
-      const safety = assessSafety(state);
+      const safety = assessSafety(state, emergencyContact);
       if (safety.routed) throw new AiServiceError("safety_routed", "Routine brief generation stopped by the safety-routing rule.");
       return buildStructuredBrief(state);
     },
@@ -425,97 +486,119 @@ function recoverAssistantMessage(content: string): string | null {
 
 function makeFallbackIntakeTurn(_latestResponse: string, state: IntakeState, fieldUpdates: IntakeField[] = []): NextTurnResult {
   const nextPlan = planNextQuestion(state);
-  const question = nextPlan?.question ?? COMPLETENESS_QUESTION;
+  const question = nextPlan?.question ?? null;
+  const assistantMessage = question
+    ? `Thanks for sharing. ${question}`
+    : "Thanks, I’ve noted that. You can add anything else you’d like, or review the draft summary below.";
   return NextTurnResultSchema.parse({
-    assistantMessage: question,
+    assistantMessage,
     askedQuestion: question,
-    askedQuestionId: nextPlan?.questionId ?? "completion_check",
+    askedQuestionId: question ? nextPlan?.questionId ?? null : null,
     fieldUpdates,
   });
 }
 
-function normalizeNextTurn(output: unknown, allowedIds: Set<string>, state: IntakeState, extractedFacts: IntakeField[]): NextTurnResult {
+function makeClarificationTurn(state: IntakeState, fieldUpdates: IntakeField[], intent: ConversationIntent): NextTurnResult {
+  const question = intent === "decline"
+    ? "That’s okay; you can skip it. Is there anything else you’d like the clinician to know?"
+    : "I may have missed what you meant. Could you say a little more, or tell me if you’d rather skip this question?";
+  return NextTurnResultSchema.parse({ assistantMessage: question, askedQuestion: question, askedQuestionId: intent === "decline" ? "completion_check" : "unclear_input", fieldUpdates });
+}
+
+function hasUsableAnswer(text: string, fieldUpdates: IntakeField[]): boolean {
+  if (fieldUpdates.length) return true;
+  if (/^\s*(?:yes|yeah|yep|no|nope|none|nothing|not sure|i don'?t know|skip|prefer not to say|that's all|that is all)[.!\s]*$/i.test(text)) return true;
+  return text.trim().split(/\s+/).length >= 2 && !/^(?:s|asdf+|qwerty|test|clear|hello|hi|hey)$/i.test(text.trim());
+}
+
+function makeDirectRequestFailureTurn(state: IntakeState, fieldUpdates: IntakeField[], responseId: string | undefined, intent: ConversationIntent): NextTurnResult {
+  const assessment = assessPromptAssessmentNeed(state);
+  const answer = assessment
+    ? "I hear that you’re asking what to do. Because you’ve described worsening weakness or low energy that is affecting your usual activities, please contact a qualified healthcare professional promptly for an assessment. I can’t determine the cause or whether it is safe to manage at home. You do not need to finish this intake before seeking care. If you suddenly cannot stand or walk, develop severe trouble breathing, chest pain, confusion, or sudden one-sided weakness, seek emergency help now."
+    : intent === "workflow_question"
+      ? "Your answers are organized into a draft for you to review and correct. This demo does not send the summary to a clinician, so please contact your healthcare professional directly for advice about your symptoms."
+      : "I understand you’re looking for guidance. I can’t assess the cause or recommend a personal treatment. A qualified healthcare professional can advise you based on an assessment; if symptoms are severe or suddenly worsening, seek urgent medical care. You can review the information you’ve shared here, but you don’t need to finish first to get help.";
+  const nextPlan = planNextQuestion(state);
+  const needsPromptAssessment = Boolean(assessment);
+  const followUp = needsPromptAssessment ? null : nextPlan?.question ?? null;
+  const guidanceProvided = responseId ? { text: answer, category: needsPromptAssessment ? "prompt_assessment" as const : "general_information" as const, sourceResponseIds: [responseId] } : undefined;
+  return NextTurnResultSchema.parse({
+    assistantMessage: followUp ? `${answer} ${followUp}` : answer,
+    askedQuestion: followUp,
+    askedQuestionId: followUp ? nextPlan?.questionId ?? null : null,
+    fieldUpdates,
+    ...(guidanceProvided ? { guidanceProvided } : {}),
+  });
+}
+
+function isDirectQuestion(text: string): boolean {
+  return text.includes("?") || /^\s*(?:what|why|how|when|where|who|which|is|are|am|do|does|did|can|could|should|would|will|have|has)\b/i.test(text)
+    || /\b(?:what should i do|what can i do|where can i get help|do i need to|should i|can i take|is this a)\b/i.test(text);
+}
+
+function normalizeNextTurn(output: unknown, allowedIds: Set<string>, state: IntakeState, extractedFacts: IntakeField[], intent: ConversationIntent, latestResponseId?: string): NextTurnResult {
   if (!output || typeof output !== "object" || Array.isArray(output)) {
     throw new AiServiceError("invalid_response", "AMD returned no structured intake turn.");
   }
-
   const record = output as Record<string, unknown>;
   const messageValue = record.assistantMessage ?? record.assistant_message ?? record.message ?? record.response;
   if (typeof messageValue !== "string" || !messageValue.trim()) {
     throw new AiServiceError("invalid_response", "AMD intake response did not include a usable assistant message.");
   }
-  let assistantMessage = deduplicateQuestions(messageValue.trim());
-
+  const modelMessage = deduplicateQuestions(messageValue.trim());
   const explicitQuestion = record.askedQuestion ?? record.asked_question;
-  let askedQuestion = typeof explicitQuestion === "string" && explicitQuestion.trim()
-    ? explicitQuestion.trim()
-    : extractLastQuestion(assistantMessage);
-
-  const category = askedQuestion ? categoryOfQuestion(askedQuestion) : null;
-  if (category && hasAnsweredCategory(state, category)) {
-    askedQuestion = nextRequiredInterviewQuestion(state) ?? COMPLETENESS_QUESTION;
-    assistantMessage = `Thanks, I have that information. ${askedQuestion}`;
+  const modelQuestion = typeof explicitQuestion === "string" && explicitQuestion.trim() ? explicitQuestion.trim() : null;
+  const latestText = state.responses.at(-1)?.text ?? "";
+  const directRequest = intent === "guidance_request" || intent === "personal_concern" || intent === "workflow_question"
+    || intent === "frightened_about_dying" || isDirectQuestion(latestText);
+  const answerText = modelQuestion ? removeTrailingQuestion(modelMessage, modelQuestion) : directRequest ? extractAnswerBeforeQuestion(modelMessage) : modelMessage;
+  if (directRequest && (!answerText || isUnsafePersonalAdvice(answerText))) {
+    throw new AiServiceError("invalid_response", "AMD did not return a safe, direct answer to the patient's request.");
   }
 
-  const knownTopics = new Set(summarizeCoveredTopics(state.responses.map((response) => response.text).join("\n")));
-  const askedTopics = askedQuestion ? getMentionedTopics(askedQuestion) : [];
-  const alreadyAsked = askedQuestion && state.questionsAsked.some((question) => normalizeQuestion(question) === normalizeQuestion(askedQuestion!));
-  const asksWhetherSymptomIsPresent = askedQuestion !== null && /\b(any|have you|do you|are you|did you|noticed|experiencing)\b/i.test(askedQuestion);
-  const repeatsCoveredTopic = asksWhetherSymptomIsPresent && askedTopics.length > 0 && askedTopics.every((topic) => knownTopics.has(topic));
-  if ((alreadyAsked || repeatsCoveredTopic) && askedQuestion !== COMPLETENESS_QUESTION) {
-    askedQuestion = COMPLETENESS_QUESTION;
-    const firstQuestionIndex = assistantMessage.indexOf("?");
-    assistantMessage = firstQuestionIndex >= 0 ? assistantMessage.slice(0, firstQuestionIndex + 1).trim() : assistantMessage;
-  }
-  if (/\b(mild fever|mild temperature|slightly above normal|not a high fever|viral illness(?:es)?|common (?:viral )?illness(?:es)?|likely caused by|likely due to|can be caused by|may be caused by|sounds like (?:a|an)|probably (?:a|an))\b/i.test(assistantMessage)) {
-    assistantMessage = askedQuestion ? `Thanks for sharing. ${askedQuestion}` : "Thanks for sharing that. A healthcare professional can help assess what may be causing these symptoms.";
-  }
-  if (/\b(over[- ]the[- ]counter|fever reducers?|take (?:a|any|the) (?:medication|medicine)|rest and (?:drink|stay)|stay hydrated|drink (?:more )?fluids?|may help|will help|usually helpful to)\b/i.test(assistantMessage)) {
-    assistantMessage = askedQuestion
-      ? `I can’t recommend personal treatment. A clinician can advise you about what is appropriate. ${askedQuestion}`
-      : "I can’t recommend personal treatment. A qualified clinician can advise you about what is appropriate.";
-  }
-  const knownTopicMentions = [...knownTopics].filter((topic) => TOPIC_PATTERNS.find(([id]) => id === topic)?.[1].test(assistantMessage)).length;
-  if (knownTopicMentions >= 2 && /\b(you mentioned|you said|you reported|you told me|i have noted|i have recorded|your symptoms include)\b/i.test(assistantMessage)) {
-    assistantMessage = askedQuestion ? `Thanks for sharing. ${askedQuestion}` : "Thanks for sharing. Is there anything else you would like your healthcare professional to know?";
-  }
-  if (askedQuestion && normalizeQuestion(askedQuestion) === normalizeQuestion(COMPLETENESS_QUESTION)) {
-    const requiredQuestion = nextRequiredInterviewQuestion(state);
-    if (requiredQuestion) {
-      const questionStart = assistantMessage.indexOf(askedQuestion);
-      const acknowledgement = questionStart >= 0 ? assistantMessage.slice(0, questionStart).trim() : "Thanks for sharing.";
-      askedQuestion = requiredQuestion;
-      assistantMessage = `${acknowledgement || "Thanks for sharing."} ${requiredQuestion}`;
-    }
-  }
-  const selectedPlan = planNextQuestion(state);
-  const completionWasAlreadyAsked = state.questionsAsked.some((question) => normalizeQuestion(question) === normalizeQuestion(COMPLETENESS_QUESTION));
-  if (!selectedPlan && completionWasAlreadyAsked) {
-    return NextTurnResultSchema.parse({
-      assistantMessage: "Thanks, I’ve noted that. You can add anything else you’d like, or review the draft summary below.",
-      askedQuestion: null,
-      askedQuestionId: null,
-      fieldUpdates: extractedFacts.filter((field) => field.sourceResponseIds.every((id) => allowedIds.has(id))),
-    });
-  }
-  const selectedQuestion = selectedPlan?.question ?? COMPLETENESS_QUESTION;
-  const selectedQuestionId = selectedPlan?.questionId ?? "completion_check";
-  const acknowledgement = extractAcknowledgement(assistantMessage);
-  askedQuestion = selectedQuestion;
-  assistantMessage = `${acknowledgement || "Thanks for sharing."} ${selectedQuestion}`;
-  assistantMessage = keepOnlyOneQuestion(assistantMessage, askedQuestion);
-  if (askedQuestion && !assistantMessage.includes(askedQuestion)) {
-    assistantMessage = `${assistantMessage} ${askedQuestion}`;
-  }
-
-  // Patient evidence is extracted by a constrained local parser. The model does not own the intake facts.
+  const promptAssessment = assessPromptAssessmentNeed(state);
+  const assessmentPrefix = directRequest && promptAssessment
+    ? "Because you’ve described worsening weakness or low energy that is affecting your usual activities, please contact a qualified healthcare professional promptly for assessment. This AI can’t determine the cause or whether it is safe to manage at home, and you don’t need to finish this intake before seeking care."
+    : "";
+  const acknowledgement = directRequest ? answerText : extractAcknowledgement(modelMessage) || "Thanks for sharing.";
+  const baseMessage = [assessmentPrefix, acknowledgement].filter(Boolean).join(" ");
+  const planned = planNextQuestion(state);
+  const planAlreadyAsked = Boolean(planned && state.questionsAsked.some((question) => normalizeQuestion(question) === normalizeQuestion(planned.question)));
+  const nextQuestion = promptAssessment && directRequest ? null : planned && !planAlreadyAsked ? planned.question : null;
+  const assistantMessage = nextQuestion ? `${baseMessage} ${nextQuestion}` : baseMessage;
   const fieldUpdates = extractedFacts.filter((field) => field.sourceResponseIds.every((id) => allowedIds.has(id)));
-
-  const result = NextTurnResultSchema.safeParse({ assistantMessage, askedQuestion, askedQuestionId: selectedQuestionId, fieldUpdates });
-  if (!result.success) {
-    throw new AiServiceError("invalid_response", "AMD intake response could not be normalized safely.");
-  }
+  const guidanceProvided = directRequest && latestResponseId ? {
+    text: [assessmentPrefix, answerText].filter(Boolean).join(" "),
+    category: promptAssessment ? "prompt_assessment" as const : "general_information" as const,
+    sourceResponseIds: [latestResponseId],
+  } : undefined;
+  const result = NextTurnResultSchema.safeParse({
+    assistantMessage,
+    askedQuestion: nextQuestion,
+    askedQuestionId: nextQuestion ? planned?.questionId ?? null : null,
+    fieldUpdates,
+    ...(guidanceProvided ? { guidanceProvided } : {}),
+  });
+  if (!result.success) throw new AiServiceError("invalid_response", "AMD intake response could not be normalized safely.");
   return result.data;
+}
+
+function removeTrailingQuestion(message: string, question: string): string {
+  const index = normalizeQuestion(message).lastIndexOf(normalizeQuestion(question));
+  if (index < 0) return extractAnswerBeforeQuestion(message);
+  const actualQuestionIndex = message.lastIndexOf(question);
+  if (actualQuestionIndex < 0) return extractAnswerBeforeQuestion(message);
+  return message.slice(0, actualQuestionIndex).replace(/[\s.!?]+$/g, "").trim();
+}
+
+function isUnsafePersonalAdvice(message: string): boolean {
+  return /\b(?:you have|you likely have|you probably have|this is (?:a|an)|take \d+|take (?:paracetamol|acetaminophen|ibuprofen|aspirin)|start taking|stop taking|increase your dose|decrease your dose)\b/i.test(message);
+}
+
+function extractAnswerBeforeQuestion(message: string): string {
+  const finalQuestion = extractLastQuestion(message);
+  if (!finalQuestion) return message.trim();
+  return removeTrailingQuestion(message, finalQuestion);
 }
 
 function extractAcknowledgement(message: string): string {
@@ -583,7 +666,12 @@ function contextualNoneField(question: string, sourceResponseId: string): NextTu
 }
 
 function isNoAdditionalSymptomsReply(text: string): boolean {
-  return /^\s*(nothing|none|nope|no|no symptoms)\b[\s,.!?-]*(just what i said|nothing else|no other symptoms?|only that|that'?s it|that is it)?[\s,.!?]*$/i.test(text);
+  return /^\s*(nothing|none|nope|no|no symptoms|that'?s all|that is all|nothing else)\b[\s,.!?-]*(just what i said|nothing else|no other symptoms?|only that|that'?s it|that is it)?[\s,.!?]*$/i.test(text);
+}
+
+function isContextualFinish(text: string, activeQuestionId: string | undefined): boolean {
+  if (/\b(?:finish(?: the interview)?|wrap(?: it)? up|stop asking|end the interview|submit my intake|i'?m done|i am done)\b/i.test(text)) return true;
+  return activeQuestionId === "completion_check";
 }
 
 function normalizeQuestion(question: string): string {
@@ -603,21 +691,6 @@ function deduplicateQuestions(message: string): string {
     }
   }
   return result.replace(/\s{2,}/g, " ").trim();
-}
-
-function keepOnlyOneQuestion(message: string, askedQuestion: string | null): string {
-  if (askedQuestion) {
-    const questionIndex = message.lastIndexOf(askedQuestion);
-    if (questionIndex >= 0) {
-      const prefix = message.slice(0, questionIndex).replace(/[?.!\s]+$/g, "").trim();
-      return `${prefix ? `${prefix}. ` : ""}${askedQuestion}`.trim();
-    }
-  }
-  const questionStart = message.indexOf("?");
-  if (questionStart < 0) return message;
-  const prefix = message.slice(0, questionStart).replace(/[?.!]+\s*$/g, "").trim();
-  const question = askedQuestion ?? message.slice(0, questionStart + 1).trim();
-  return `${prefix ? `${prefix}. ` : ""}${question}`.trim();
 }
 
 function extractLastQuestion(message: string): string | null {

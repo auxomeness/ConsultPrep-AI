@@ -26,7 +26,10 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
   const additional = activeFields.filter((field) => field.fieldId === "additional_symptoms");
   const patientQuestion = activeFields.find((field) => field.fieldId === "patient_question");
   const patientGoal = activeFields.find((field) => field.fieldId === "patient_goal");
-  const safety = state.responses.filter((response) => /\b(shortness of breath|difficulty breathing|trouble breathing|blurry vision|blurred vision|vision loss|severe eye pain|cannot see|can't see|eye injury)\b/i.test(response.text));
+  const automatedSafety = state.safety?.routed ? state.safety : assessSafety(state);
+  const safety = automatedSafety.routed
+    ? state.responses.filter((response) => automatedSafety.matchedResponseIds.includes(response.id))
+    : state.responses.filter((response) => /\b(shortness of breath|difficulty breathing|trouble breathing|blurry vision|blurred vision|vision loss|severe eye pain|cannot see|can't see|eye injury)\b/i.test(response.text));
   const informationNotEstablished: string[] = [];
   for (const field of activeFields.filter((candidate) => ["unknown", "not_answered", "not_asked", "unclear", "conflicting", "declined"].includes(candidate.status))) {
     informationNotEstablished.push(`${humanize(field.fieldId)}: ${statusLabel(field.status)}.`);
@@ -59,7 +62,7 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
     text: `${timelineLabel(field.fieldId)}: ${fact.text}`,
   })));
   const contextFields = activeFields.filter((field) => ["relevant_context", "medical_history", "medications", "allergies", "recent_events", "prior_advice", "prior_eye_advice", "contact_lens_use", "food_fluids"].includes(field.fieldId));
-  const symptomDetailFields = activeFields.filter((field) => ["symptom_location", "symptom_character", "symptom_severity", "headache_associated_changes", "digestive_pattern", "ent_associated_features", "visual_change_description"].includes(field.fieldId));
+  const symptomDetailFields = activeFields.filter((field) => ["symptom_location", "symptom_character", "symptom_severity", "headache_location", "headache_character", "headache_severity", "headache_associated_changes", "digestive_pattern", "ent_associated_features", "visual_change_description"].includes(field.fieldId));
   const actionFields = activeFields.filter((field) => field.fieldId === "actions_taken");
   const backgroundFacts = [
     ...factsFor(contextFields),
@@ -97,7 +100,6 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
           : activeFields.some((field) => field.fieldId === `symptom_onset_${symptomId}`) ? "unknown" : "not_asked") as "declined" | "conflicting" | "unclear" | "unknown" | "not_asked",
   }));
   const topUnanswered = [...unansweredOnset, ...unanswered].sort((left, right) => Number(right.importance === "important") - Number(left.importance === "important")).slice(0, 6);
-  const automatedSafety = state.safety?.routed ? state.safety : assessSafety(state);
   const intakeCompleteness = assessIntakeCompleteness(state);
   const brief = StructuredConsultationBriefSchema.parse({
     schemaVersion: "1.0",
@@ -110,6 +112,7 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
     associatedSymptoms: factsFor(additional),
     importantUnansweredQuestions: topUnanswered,
     patientConcernsAndQuestions: patientQuestions,
+    guidanceProvided: state.guidanceProvided ?? [],
     automatedSafetyFlags: automatedSafety.routed && automatedSafety.ruleId ? [{
       ruleId: automatedSafety.ruleId,
       message: automatedSafety.guidance ?? "Automated safety rule matched; this is not a diagnosis and does not rule out other urgent concerns.",
@@ -189,6 +192,10 @@ export function formatStructuredBrief(brief: StructuredConsultationBrief): strin
   });
 
   pushSection(lines, "Your Questions", brief.patientConcernsAndQuestions, width);
+  if (brief.guidanceProvided.length) {
+    addHeading(lines, "Guidance Shared During Intake");
+    brief.guidanceProvided.forEach((item) => appendWrapped(lines, `• ${item.text} (${item.category.replace(/_/g, " ")}; prompted by ${formatSources(item.sourceResponseIds)})`, width, "  "));
+  }
   pushSection(lines, "Safety-Relevant Statements", brief.safetyRelevantStatements, width);
   if (brief.automatedSafetyFlags.length) {
     addHeading(lines, "Safety Notice");
@@ -325,6 +332,9 @@ function validateBriefEvidence(brief: StructuredConsultationBrief, state: Intake
   }
   for (const flag of brief.automatedSafetyFlags) {
     if (flag.sourceResponseIds.some((id) => !responses.has(id))) throw new Error("Safety flag references a response outside the validated intake state.");
+  }
+  for (const guidance of brief.guidanceProvided) {
+    if (guidance.sourceResponseIds.some((id) => !responses.has(id))) throw new Error("Guidance record references a response outside the validated intake state.");
   }
   if (brief.sourceTraceability.length !== state.responses.length
     || brief.sourceTraceability.some((source) => responses.get(source.responseId) !== source.originalText)) {

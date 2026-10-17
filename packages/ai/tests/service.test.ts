@@ -107,7 +107,7 @@ describe("AI service behavior with mocked inference", () => {
     const result = await service.continueIntake({ state: { ...state, responses: [{ id: "urgent", text: "I have severe chest pain", sequence: 0 }] } });
     expect(result).toMatchObject({
       safety: { routed: true, matchedResponseIds: ["urgent"] },
-      state: { completion: "ready_for_review", safety: { routed: true, matchedResponseIds: ["urgent"] } },
+      state: { completion: "emergency_interrupted", safety: { routed: true, matchedResponseIds: ["urgent"] } },
     });
     expect(client.complete).not.toHaveBeenCalled();
   });

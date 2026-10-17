@@ -144,3 +144,25 @@ No live AMD inference was made for this change. Model quality, latency, broad sa
 - Patient correction field selection is heuristic and should be reviewed against a broader synthetic correction set.
 - Authentication, persistence, authorization, clinician UI, and actual handoff belong to the host application and are not implemented here.
 - No clinical validation, diagnosis accuracy, emergency sensitivity/specificity, or patient-care effectiveness is claimed.
+
+## Contextual fact and emergency-interruption pass (2026-10-17)
+
+The mandatory synthetic migraine-like headache transcript exposed two root causes: onset extraction recognized only a limited set of words and time units, so volunteered text such as “30mins ago” was missed; deterministic safety checks only matched individual messages or a few fixed phrases, so a severe headache description, weakness, and vomiting spread across turns were not combined. An informal correction also did not reliably mark a grouped onset prompt as answered. Safety routing used `ready_for_review`, which did not represent an interrupted intake.
+
+- `src/intake-facts.ts` parses approximate minute and second durations, associates a migraine-like report with the headache timeline, retains a general onset separately from symptom-specific onset, and propagates timing to multiple symptoms only when the patient explicitly says they began together. Headache location, character, and severity use separate fields.
+- `src/conversation.ts` and `src/workflow.ts` recognize an informal “I already said / what do you mean?” onset correction, link it to its source response, update question history, and suppress repeated onset prompts.
+- `src/safety.ts` evaluates context across turns for severe headache with weakness and vomiting, severe headache with either associated symptom, and sudden severe headache. It accepts configurable emergency contact settings. The Philippine demo default is 911.
+- `src/contracts.ts`, `src/workflow.ts`, and `src/service.ts` add `emergency_interrupted`, preserve the safety event, stop ordinary question planning, prevent stale turn application from changing the interrupted state, and prevent local confirmation from completing an interrupted intake.
+- `frontend/app/api/demo/intake/route.ts` evaluates deterministic safety before service setup or AMD inference and preserves an existing emergency interruption. The AMD Token Factory path remains unchanged for non-emergency turns. `frontend/lib/server/ai-service.ts` passes the configured emergency contact to the AI service.
+- `src/brief.ts` includes source-linked headache details and safety-event source responses. The brief remains an AI-generated draft and makes no clinician notification claim.
+- `tests/clinical-safety-regression.test.ts` adds contextual extraction, correction, shared-onset, emergency, summary, interruption, configuration, and benign-flow scenarios; `tests/service.test.ts` expects the explicit emergency state.
+
+The implemented message for the complete reference pattern is:
+
+> I’m concerned about the severe headache you described, together with weakness and vomiting. These symptoms can be serious and need urgent medical assessment. Please call 911 in the Philippines now, or ask someone nearby to call for you. You can also have someone help you get to the nearest hospital emergency department immediately. Do not drive yourself if you feel weak or severely unwell. Please don’t wait to finish this questionnaire before getting help. This tool cannot assess or rule out an emergency.
+
+Set `CONSULTPREP_EMERGENCY_NUMBER` and `CONSULTPREP_EMERGENCY_REGION` in the server runtime only after verifying the appropriate local emergency contact. The demo default is Philippine-specific; the application does not locate the patient or select a nearby facility.
+
+Validation on 2026-10-17: AI package type check and build passed; all 169 AI tests across 16 files passed; frontend type check passed; `git diff --check` passed. Regression tests use synthetic text and mocked inference. No AMD request was made during these checks.
+
+This change is not clinical validation. Keyword rules can miss emergencies, can misread ambiguous language, and have not been measured for sensitivity or specificity. Qualified healthcare professionals must review the criteria and patient-facing guidance before real-patient use. No integration contacts emergency services, locates hospitals, or notifies a clinician.

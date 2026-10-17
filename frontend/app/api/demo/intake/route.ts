@@ -3,9 +3,12 @@ import {
   AiServiceError,
   IntakeStateSchema,
   StructuredConsultationBriefSchema,
+  assessSafety,
   applyIntakeTurn,
   buildStructuredBrief,
   confirmPatientBrief,
+  emergencyContactFromEnvironment,
+  interruptIntakeForSafety,
   recordPatientAnswer,
   type IntakeState,
 } from "@consultprep/ai";
@@ -60,14 +63,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    const service = await getAiService();
     switch (input.operation) {
       case "start": {
+        const service = await getAiService();
         const result = service.startIntake();
         return NextResponse.json({ state: result.state, assistantMessage: result.assistantMessage });
       }
       case "turn": {
+        if (input.state.completion === "emergency_interrupted" || input.state.safety?.routed) {
+          const guidance = input.state.safety?.guidance
+            ?? "This intake was interrupted for urgent medical guidance. Please contact emergency services or seek urgent medical help. This tool cannot assess or rule out an emergency.";
+          return NextResponse.json({ state: input.state, assistantMessage: guidance, safety: true });
+        }
         const recorded = recordPatientAnswer(input.state, input.text);
+        const safety = assessSafety(recorded.state, emergencyContactFromEnvironment());
+        if (safety.routed) {
+          const state = interruptIntakeForSafety(recorded.state, safety);
+          return NextResponse.json({
+            state,
+            assistantMessage: safety.guidance ?? "Please seek urgent medical help now. This tool cannot assess or rule out an emergency.",
+            safety: true,
+          });
+        }
+        const service = await getAiService();
         const result = await service.continueIntake(
           { state: recorded.state, latestResponseId: recorded.responseId },
           request.signal,
@@ -83,14 +101,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ state, assistantMessage: result.assistantMessage, safety: false });
       }
       case "brief": {
-        if (input.state.safety?.routed) {
+        if (input.state.safety?.routed || input.state.completion === "emergency_interrupted") {
           return NextResponse.json({ error: { code: "SAFETY_ROUTED", message: "Routine summary generation is stopped so you can focus on getting help." } }, { status: 409 });
         }
+        const service = await getAiService();
         const brief = await service.generateBrief({ state: input.state });
         return NextResponse.json({ brief: StructuredConsultationBriefSchema.parse(brief) });
       }
       case "confirm": {
-        if (input.state.safety?.routed) {
+        if (input.state.safety?.routed || input.state.completion === "emergency_interrupted") {
           return NextResponse.json({ error: { code: "SAFETY_ROUTED", message: "This intake was stopped for urgent guidance." } }, { status: 409 });
         }
         const confirmedState = confirmPatientBrief(input.state);

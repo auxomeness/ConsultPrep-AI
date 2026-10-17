@@ -66,3 +66,21 @@ The patient-specific hardening and patient-brief presentation pass passed `npm r
 ## Safety statement
 
 The deterministic rules cover only the explicitly listed triggers and keyword checks; they are not clinically validated. Eye symptom guidance is informed by the NHS eye-pain and National Eye Institute eye-care pages linked in `src/safety.ts`; this limited rule set does not establish that an emergency is absent. General health Q&A is not grounded in vetted clinical sources. Inability-to-move routing is a conservative prototype rule and can misinterpret idiomatic wording; it needs review by qualified clinicians. No sensitivity, specificity, clinical safety, scope-classification, or emergency-detection claim is made.
+
+## Conversational orchestration pass (2026-10-17)
+
+The latest change makes the intake service the decision point after each patient message. Automated checks use synthetic patient text and mocked model responses only.
+
+| Area | Implemented behavior | Verification |
+|---|---|---|
+| Intent and workflow | Separate routing for greetings, ambiguous openings, direct guidance questions, finish requests, summary requests, and provider-finding requests. A provider-finding request is recorded as a patient goal and clearly says this demo cannot locate or book services. | Classifier and service regressions pass. |
+| Decision precedence | Configured urgent safety rules run before intent response and question planning. Direct questions are answered before any planner-selected follow-up; ordinary short answers avoid an AMD request and use the central question planner. | Synthetic service tests verify no inference on urgent route and direct answer preservation. |
+| Weakness and energy | “Lost energy” is stored separately from confirmed weakness. An unclear report of weakness can prompt one focused distinction; the planner can stop re-asking when the patient remains unsure. | Fact and planner regressions pass. |
+| Functional impact and duplicates | Chores/usual-activity descriptions are recorded as `daily_impact`; the planner skips that target once it is captured. Question selection remains target-based and patient-specific. | Functional-impact and concern-specific planner regressions pass; the existing typed-target deduplication test passes. |
+| Completion and state | Explicit finish requests and `/summary` move the intake to `ready_for_review` without an invented `completion_check` history item. Contextual “that's all” during an associated-symptom prompt is treated as a scoped answer unless the patient explicitly asks to finish or is at the review prompt. | Workflow and completion regressions pass. |
+| Guidance and brief | Guidance is stored separately from patient facts with a category and triggering response IDs; the brief displays it in a separate section and validates its source IDs. | Mocked direct-question and brief traceability tests pass. |
+| Model failure | A direct question that hits a provider timeout or malformed output receives a conservative recovery response; existing intake responses remain in state. This browser demo has no database write path. | Synthetic timeout fallback test passes; no database integration was present to exercise. |
+| AI package | Type check, 15 test files / 151 tests, and build all pass. `git diff --check` passes. | Executed 2026-10-17. |
+| Frontend package | Type check passes. Full frontend test suite reports 2 failing test files / 4 failing tests: `IntakeConversation` hits missing jsdom `matchMedia` and `scrollTo`, and `ProductIntroduction` expects older demo copy. No frontend files were changed in this pass. | Executed 2026-10-17; these failures are reported, not attributed to clinical behavior. |
+
+These are software regression checks, not clinical validation. AMD was not contacted during these checks; model replies in the tests are mocked. The connected AMD request path remains in place but direct patient questions and generated guidance have not been live-validated against AMD. The current intake endpoint receives and returns state in the request cycle; no persistent database or clinician handoff was found in the inspected path. A qualified clinician must review the safety rules, the prompt-assessment language, the question relevance criteria, and all patient-facing guidance before any real-patient use.

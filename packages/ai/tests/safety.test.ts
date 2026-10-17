@@ -18,7 +18,7 @@ describe("deterministic synthetic safety routes", () => {
     const event = assessSafety({ responses: [{ id: "r1", text: "I feel shortness of breath and palpitating", sequence: 0 }] });
     expect(event).toMatchObject({ routed: true, ruleId: "shortness_of_breath_with_palpitations" });
     expect(event.guidance).toMatch(/I’m sorry you’re experiencing this/i);
-    expect(event.guidance).toMatch(/local emergency number now/i);
+    expect(event.guidance).toMatch(/call 911 in the Philippines now/i);
     expect(event.guidance).toMatch(/stopping the intake/i);
   });
 
@@ -53,7 +53,7 @@ describe("deterministic synthetic safety routes", () => {
   it("interrupts when a patient reports being unable to move", () => {
     const event = assessSafety({ responses: [{ id: "r1", text: "I cannot move and feel very weak", sequence: 0 }] });
     expect(event).toMatchObject({ routed: true, ruleId: "reported_inability_to_move", matchedResponseIds: ["r1"] });
-    expect(event.guidance).toMatch(/local emergency service/i);
+    expect(event.guidance).toMatch(/call 911 in the Philippines now/i);
   });
 
   it("does not route a clear negation or hypothetical as a reported symptom", () => {
