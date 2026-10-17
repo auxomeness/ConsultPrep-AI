@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-test("introduction navigates to the AMD AI demo and back", async ({ page }) => {
+test("introduction navigates to the intake demo and back", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(page.getByText("AI documents. Clinicians decide.")).toBeVisible();
-  await expect(page.getByText(/submitted answers are sent to AMD AI for a response/i)).toBeVisible();
-  await page.getByRole("link", { name: "Try the AMD AI intake" }).click();
+  await expect(page.getByText(/does not diagnose, prescribe, or replace professional medical judgment/i)).toBeVisible();
+  await page.getByRole("link", { name: "Begin intake" }).click();
 
   await expect(page).toHaveURL(/\/intake$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Prepare for a clinician visit");
@@ -128,9 +128,12 @@ for (const width of [375, 768, 1280]) {
   test(`introduction and intake remain usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 812 });
     await page.goto("/");
-    const entry = page.getByRole("link", { name: "Try the AMD AI intake" });
+    const entry = page.getByRole("link", { name: "Begin intake" });
     await expect(entry).toBeVisible();
     expect(await entry.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+    await entry.focus();
+    await expect(entry).toBeFocused();
+    expect(await entry.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
     await entry.click();
