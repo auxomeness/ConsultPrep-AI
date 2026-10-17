@@ -2,7 +2,7 @@
 
 **AI documents. Clinicians decide.**
 
-ConsultPrep AI is an AI-powered pre-consultation intake assistant that helps patients organize their concerns before a medical consultation. It transforms patient-reported information into a structured, source-linked consultation brief that clinicians can review, correct, and finalize.
+ConsultPrep AI is an AI-powered pre-consultation intake assistant with a domain-limited Q&A mode for general educational health questions and questions about ConsultPrep. It helps patients organize their concerns into a structured, source-linked consultation brief that clinicians can review, correct, and finalize.
 
 Instead of replacing medical professionals, ConsultPrep AI aims to make pre-consultation information gathering more organized, consistent, and traceable.
 
@@ -19,6 +19,8 @@ The system organizes their responses into a structured brief while preserving li
 ## Key Features
 
 - **Adaptive patient intake** — Asks relevant follow-up questions based on information already provided.
+- **Domain-limited Q&A** — Handles general educational health questions and ConsultPrep system questions while declining clearly unrelated topics and personal diagnosis/treatment requests. Medical answers are not yet grounded in a vetted clinical reference corpus.
+- **Project-guidance retrieval** — Uses locally generated embeddings to retrieve approved project guidance and synthetic examples for the AI workflow; it is not a clinical knowledge base.
 - **Structured consultation briefs** — Organizes patient responses into a consistent, readable format.
 - **Source traceability** — Links relevant brief entries to the original patient statements.
 - **Patient review and correction** — Allows patients to review their information before submitting it.
@@ -71,6 +73,8 @@ The intended technology stack includes:
 | Version control | Git and GitHub |
 
 **Note:** The exact AMD Token Factory model, endpoint, authentication method, and request/response format must be verified against the selected service before implementation. The table describes the intended architecture, not a claim that every component is already implemented.
+
+Developer 1's initial AI package uses local embeddings for project-guidance retrieval. AMD inference is tested only after offline completion; the initial live validation is one synthetic request.
 
 ## Architecture Principles
 
