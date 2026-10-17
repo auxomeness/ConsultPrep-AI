@@ -9,7 +9,7 @@ There is no root `package.json` or npm workspace. Install and run each package f
 
 - `frontend/`: Next.js 16, React 19, TypeScript, Tailwind, UI component and Playwright tests. The patient and clinician pages are local preview experiences.
 - `packages/ai/`: standalone TypeScript AI package with Zod contracts, a local Qwen intake client, project-guidance retrieval, safety heuristics, and an optional AMD client. It is not imported by the frontend and has no HTTP routes or persistence.
-- `backend/`: SQL migrations, Drizzle schema/config, authorization helpers, and persistence/review service contracts/tests. There is no backend package, Supabase client, API route, or concrete database adapter yet.
+- `backend/`: SQL migrations, Drizzle schema/config, authorization helpers, and persistence/review service contracts/tests. It has a local package for backend tests and Drizzle tooling, but no Supabase client, API route, or concrete database adapter yet.
 
 The detailed contracts and limitations are in [AI integration](packages/ai/docs/frontend-backend-integration.md), [database setup](backend/DATABASE.md), [authentication](backend/AUTHORIZATION.md), [clinician review](backend/persistence/CLINICIAN_REVIEW.md), and the [test report](backend/TEST_REPORT.md).
 
@@ -23,7 +23,7 @@ The detailed contracts and limitations are in [AI integration](packages/ai/docs/
 
 ## Project installation
 
-Install frontend and AI package dependencies separately:
+Install frontend, AI, and backend package dependencies separately:
 
 ```powershell
 Set-Location frontend
@@ -31,9 +31,12 @@ npm ci
 
 Set-Location ../packages/ai
 npm ci
+
+Set-Location ../../backend
+npm ci
 ```
 
-There is no root `npm install`, root dev command, or shared dependency install. The backend test helpers use Node's built-in test runner and do not currently have their own `package.json`.
+There is no root `npm install`, root dev command, or shared dependency install. Backend tests use Node's built-in test runner; Drizzle schema checks and generation are available through the backend package scripts.
 
 ## Environment files
 

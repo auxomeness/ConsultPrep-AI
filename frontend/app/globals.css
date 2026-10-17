@@ -14,6 +14,15 @@
   --preview: #eaf5ee;
   --preview-foreground: #1b4d39;
   --error: #a12626;
+  --canvas: var(--background);
+  --paper: var(--surface);
+  --ink: var(--foreground);
+  --teal: var(--accent);
+  --teal-dark: var(--accent-hover);
+  --teal-soft: var(--preview);
+  --amber: #fff8e8;
+  --amber-line: #e9d39d;
+  --error-soft: #fff2f1;
 }
 
 @theme inline {
@@ -262,6 +271,8 @@ textarea:focus, input:focus-visible { border-color: #4d9b8d; outline: 3px solid 
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #101d17;
