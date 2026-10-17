@@ -112,8 +112,30 @@ The interface must be understandable, accessible, responsive, predictable, and t
 
 The actual frontend repository currently uses:
 
-- React
+- Next.js 16.4.2
+- React 19.3.0
 - TypeScript
+- Next.js App Router
+- Tailwind CSS 4
+- React Compiler
+- Turbopack-based Next.js tooling
+
+TypeScript strict mode is enabled.
+
+Available npm scripts currently include:
+
+- npm run dev
+- npm run build
+- npm run start
+- npm run lint
+
+There is currently no dedicated:
+
+- npm run test
+- npm run test:e2e
+- npm run typecheck
+
+The project currently contains only the initial application route and has not yet implemented the ConsultPrep patient or clinician workflows.
 
 The repository itself is the source of truth for:
 

@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## ConsultPrep integration status
+
+The intake page is currently a frontend-only preview. It does not call a backend or save responses. Follow the [AI frontend/backend integration guide](../packages/ai/docs/frontend-backend-integration.md) when connecting it to the server-owned AI session and consultation brief APIs.
+
 ## Getting Started
 
 First, run the development server:

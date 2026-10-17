@@ -7,6 +7,8 @@ Core principle: AI documents. Clinicians decide.
 The system must not diagnose medical conditions, prescribe medication, recommend treatments, or replace professional medical judgment.
 AI integration direction
 The application will use the AMD Token Factory API directly for AI inference, subject to verification of the available endpoint, model access, authentication, and usage restrictions.
+Developer 1 owns local RAG over curated project-owned guidance and synthetic examples, using a local embedding model. Do not add clinical-reference retrieval or a separate vector database in the initial package.
+To preserve the API usage budget, do not send inference requests during development. Complete offline tests and handoff first, then make one synthetic smoke request. Report other live model behavior as unverified.
 Evolus Business Agents will not be used in the initial implementation.
 Before development, confirm the hackathon's eligibility requirements. If participating in a track that explicitly requires Evolus, a direct AMD API integration may not satisfy that track's requirements.
 The initial implementation will prioritize a complete, secure, and testable patient-to-clinician workflow over unnecessary integrations or features.
