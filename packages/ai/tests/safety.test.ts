@@ -65,4 +65,39 @@ describe("deterministic synthetic safety routes", () => {
   it("does not label routine synthetic text as urgent", () => {
     expect(assessSafety({ responses: [{ id: "r1", text: "Mild headache since yesterday", sequence: 0 }] }).routed).toBe(false);
   });
+
+  it("keeps intake open for a headache described as crushing with one vomiting report", () => {
+    const event = assessSafety({ responses: [
+      { id: "r1", text: "I feel headache", sequence: 0 },
+      { id: "r2", text: "It stays there, it feels weird, it is like tingling", sequence: 1, questionBankId: "headache_location" },
+      { id: "r3", text: "It is a weird kind of feeling, crushing my head", sequence: 2, questionBankId: "headache_character" },
+      { id: "r4", text: "Yes, vomiting and body ache", sequence: 3 },
+    ] });
+    expect(event.routed).toBe(false);
+  });
+
+  it("does not equate one vomiting episode with repeated vomiting, even when headache is severe", () => {
+    const event = assessSafety({ responses: [
+      { id: "r1", text: "I have a severe headache", sequence: 0 },
+      { id: "r2", text: "I vomited once", sequence: 1 },
+    ] });
+    expect(event.routed).toBe(false);
+  });
+
+  it.each([
+    ["I have the worst headache ever and have vomited several times", "severe_headache_with_repeated_vomiting"],
+    ["My severe headache started suddenly", "sudden_severe_headache"],
+    ["I have a severe headache and weakness on my left side", "severe_headache_with_focal_neurologic_symptom"],
+    ["I have a headache, fever, and a stiff neck", "headache_with_fever_and_stiff_neck"],
+  ])("still routes clear headache red flags: %s", (text, ruleId) => {
+    expect(assessSafety({ responses: [{ id: "red-flag", text, sequence: 0 }] })).toMatchObject({ routed: true, ruleId });
+  });
+
+  it("does not combine a negated severe headache with a reported vomiting episode", () => {
+    const event = assessSafety({ responses: [
+      { id: "r1", text: "I have a headache but it is not severe", sequence: 0 },
+      { id: "r2", text: "I vomited once", sequence: 1 },
+    ] });
+    expect(event.routed).toBe(false);
+  });
 });

@@ -17,6 +17,7 @@ import { getAiService } from "@/lib/server/ai-service";
 type DemoRequest =
   | { operation: "start" }
   | { operation: "turn"; state: IntakeState; text: string }
+  | { operation: "retry"; state: IntakeState; latestResponseId: string }
   | { operation: "brief"; state: IntakeState }
   | { operation: "confirm"; state: IntakeState };
 
@@ -33,9 +34,10 @@ function parseRequest(value: unknown): DemoRequest | null {
   if (value.operation === "start") {
     return hasOnlyKeys(value, ["operation"]) ? { operation: "start" } : null;
   }
-  if (!["turn", "brief", "confirm"].includes(value.operation)) return null;
+  if (!["turn", "retry", "brief", "confirm"].includes(value.operation)) return null;
 
-  const allowedKeys = value.operation === "turn" ? ["operation", "state", "text"] : ["operation", "state"];
+  const allowedKeys = value.operation === "turn" ? ["operation", "state", "text"]
+    : value.operation === "retry" ? ["operation", "state", "latestResponseId"] : ["operation", "state"];
   if (!hasOnlyKeys(value, allowedKeys)) return null;
   const parsedState = IntakeStateSchema.safeParse(value.state);
   if (!parsedState.success) return null;
@@ -44,6 +46,11 @@ function parseRequest(value: unknown): DemoRequest | null {
     if (typeof value.text !== "string" || value.text.trim().length === 0 || value.text.length > 8_000) return null;
     return { operation: "turn", state: parsedState.data, text: value.text.trim() };
   }
+  if (value.operation === "retry") {
+    const latestResponse = parsedState.data.responses.at(-1);
+    if (typeof value.latestResponseId !== "string" || !latestResponse || value.latestResponseId !== latestResponse.id) return null;
+    return { operation: "retry", state: parsedState.data, latestResponseId: value.latestResponseId };
+  }
   return value.operation === "brief"
     ? { operation: "brief", state: parsedState.data }
     : { operation: "confirm", state: parsedState.data };
@@ -51,6 +58,7 @@ function parseRequest(value: unknown): DemoRequest | null {
 
 export async function POST(request: Request) {
   let body: unknown;
+  let recovery: { state: IntakeState; latestResponseId: string } | null = null;
   try {
     body = await request.json();
   } catch {
@@ -76,6 +84,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ state: input.state, assistantMessage: guidance, safety: true });
         }
         const recorded = recordPatientAnswer(input.state, input.text);
+        recovery = { state: recorded.state, latestResponseId: recorded.responseId };
         const safety = assessSafety(recorded.state, emergencyContactFromEnvironment());
         if (safety.routed) {
           const state = interruptIntakeForSafety(recorded.state, safety);
@@ -98,6 +107,33 @@ export async function POST(request: Request) {
           });
         }
         const state = applyIntakeTurn(recorded.state, result);
+        return NextResponse.json({ state, assistantMessage: result.assistantMessage, safety: false });
+      }
+      case "retry": {
+        if (input.state.completion === "emergency_interrupted" || input.state.safety?.routed) {
+          const guidance = input.state.safety?.guidance
+            ?? "This intake was interrupted for urgent medical guidance. Please contact emergency services or seek urgent medical help. This tool cannot assess or rule out an emergency.";
+          return NextResponse.json({ state: input.state, assistantMessage: guidance, safety: true });
+        }
+        recovery = { state: input.state, latestResponseId: input.latestResponseId };
+        const safety = assessSafety(input.state, emergencyContactFromEnvironment());
+        if (safety.routed) {
+          const state = interruptIntakeForSafety(input.state, safety);
+          return NextResponse.json({ state, assistantMessage: safety.guidance ?? "Please seek urgent medical help now. This tool cannot assess or rule out an emergency.", safety: true });
+        }
+        const service = await getAiService();
+        const result = await service.continueIntake(
+          { state: input.state, latestResponseId: input.latestResponseId },
+          request.signal,
+        );
+        if ("safety" in result) {
+          return NextResponse.json({
+            state: result.state,
+            assistantMessage: result.safety.guidance ?? "Please seek urgent medical help now. This tool cannot assess or rule out an emergency.",
+            safety: true,
+          });
+        }
+        const state = applyIntakeTurn(input.state, result);
         return NextResponse.json({ state, assistantMessage: result.assistantMessage, safety: false });
       }
       case "brief": {
@@ -126,6 +162,9 @@ export async function POST(request: Request) {
     const message = code === "AI_TIMEOUT" ? "The AI service did not respond in time. Your answer is still in this browser; you can try again."
       : code === "AI_INVALID_RESPONSE" ? "The AI service returned an unusable response. Your answer is still in this browser; you can try again."
         : "The AI service is unavailable or not configured. Your answer is still in this browser; you can try again.";
-    return NextResponse.json({ error: { code, message } }, { status });
+    return NextResponse.json({
+      ...(recovery ? { state: recovery.state, pendingResponseId: recovery.latestResponseId } : {}),
+      error: { code, message },
+    }, { status });
   }
 }

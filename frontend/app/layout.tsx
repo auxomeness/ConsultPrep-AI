@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ConsultPrep AI | Prepare for your consultation",
   description:
-    "A synthetic AMD AI demo for organizing information before a healthcare consultation. It does not diagnose or prescribe.",
+    "An AI intake demo for organizing information before a healthcare consultation. It does not diagnose or prescribe.",
   icons: {
     icon: "/consultprep-mark.svg",
   },
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <span>ConsultPrep AI</span>
             </Link>
             <span className="hidden text-xs font-semibold uppercase tracking-wide text-muted sm:block">
-              AMD AI demo
+              AI intake demo
             </span>
           </div>
         </header>

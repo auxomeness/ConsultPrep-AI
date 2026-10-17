@@ -26,14 +26,27 @@ function answer(state: IntakeState, text: string, questionId?: string, question?
 function referenceEmergencyState(): IntakeState {
   let state = answer(startState(), "Just 30mins ago, it felt like migraine");
   state = answer(state, "On the right side", "headache_location", "Where do you feel the headache, and does it stay there or move?");
-  state = answer(state, "It felt like crushing my skull", "headache_character", "How would you describe the headache in your own words?");
-  return answer(state, "Yes, I feel weak and I vomit", "additional_symptoms", "Have you noticed any other symptoms along with this?");
+  state = answer(state, "It is the worst headache I have ever had", "headache_character", "How would you describe the headache in your own words?");
+  return answer(state, "Yes, I feel weak and I have vomited several times", "additional_symptoms", "Have you noticed any other symptoms along with this?");
 }
 
 describe("contextual conversation and emergency regression scenarios", () => {
   it("A: retains an onset volunteered with the initial headache report and does not ask for it again", () => {
     const state = answer(startState(), "My headache started 30 minutes ago.");
     expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: "About 30 minutes ago" }));
+    expect(planNextQuestion(state)?.questionId).not.toMatch(/^symptom_onset__/);
+  });
+
+  it.each([
+    ["midnight", "Midnight"],
+    ["around midnight", "Around midnight"],
+    ["earlier in the morning", "Earlier in the morning"],
+    ["30 minutes ago", "About 30 minutes ago"],
+    ["for 3 days", "For 3 days"],
+  ])("accepts the onset answer '%s' and advances past the onset question", (onsetAnswer, expected) => {
+    let state = answer(startState(), "I have a headache.");
+    state = answer(state, onsetAnswer, "symptom_onset__headache", "When did the headache begin?");
+    expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_headache", value: expected }));
     expect(planNextQuestion(state)?.questionId).not.toMatch(/^symptom_onset__/);
   });
 
@@ -49,7 +62,7 @@ describe("contextual conversation and emergency regression scenarios", () => {
   it("B: checks existing state when the patient says they already answered without repeating the fact", () => {
     let state = answer(startState(), "My headache began 30 minutes ago.");
     state = answer(state, "I already answered that.", "symptom_onset__headache", "When did the headache begin?");
-    expect(state.currentIntent).toBe("correction");
+    expect(state.currentIntent).toBe("repetition_complaint");
     expect(state.fields.find((field) => field.fieldId === "symptom_onset_headache")?.value).toBe("About 30 minutes ago");
     expect(state.questionHistory?.at(-1)).toMatchObject({ status: "answered", sourceResponseIds: ["response-1"] });
     expect(planNextQuestion(state)?.questionId).not.toMatch(/^symptom_onset__/);
@@ -60,6 +73,28 @@ describe("contextual conversation and emergency regression scenarios", () => {
     expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "weakness", sourceResponseIds: ["response-1"] }));
     expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "vomiting", sourceResponseIds: ["response-1"] }));
     expect(state.fields.some((field) => field.fieldId === "symptom_onset_weakness" || field.fieldId === "symptom_onset_vomiting")).toBe(false);
+  });
+
+  it("keeps a crushing headache with one vomiting report in routine intake and captures informal onset wording", () => {
+    let state = answer(startState(), "headache");
+    state = answer(state, "earlier in the morning", "symptom_onset__headache", "When did the headache begin?");
+    state = answer(state, "yes", "headache_location", "Where do you feel the headache, and does it stay there or move?");
+    state = answer(state, "crushing in my head", "headache_character", "How would you describe the headache?");
+    state = answer(state, "yes vomiting and bodyache", "additional_symptoms", "Have you noticed any other symptoms along with this?");
+    state = answer(state, "just a while a go", "symptom_onset__vomiting", "When did the vomiting begin?");
+
+    expect(assessSafety(state).routed).toBe(false);
+    expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "headache_location", value: null, status: "unclear" }));
+    expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "symptom_onset_vomiting", value: "A little while ago" }));
+    expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "body_aches", status: "reported" }));
+    expect(state.fields).toContainEqual(expect.objectContaining({ fieldId: "additional_symptoms", value: expect.stringMatching(/Vomiting.*Body aches|Body aches.*Vomiting/), status: "reported" }));
+    expect(state.fields.some((field) => field.fieldId === "onset" && field.status === "conflicting")).toBe(false);
+    expect(planNextQuestion(state)?.questionId).not.toMatch(/^(?:headache_associated|additional_symptoms)$/);
+
+    const brief = buildStructuredBrief(state);
+    expect(brief.importantUnansweredQuestions.some((item) => item.fieldId === "symptom_onset_vomiting")).toBe(false);
+    expect(brief.patientReportedNarrative?.text).toMatch(/headache/i);
+    expect(brief.patientReportedNarrative?.text).toMatch(/vomiting/i);
   });
 
   it("D: records a shared onset only when the patient says the symptoms began together", () => {
@@ -76,7 +111,7 @@ describe("contextual conversation and emergency regression scenarios", () => {
     const result = await service.continueIntake({ state, latestResponseId: state.responses.at(-1)?.id });
     expect("safety" in result).toBe(true);
     if (!("safety" in result)) return;
-    expect(result.safety.ruleId).toBe("severe_headache_with_weakness_and_vomiting");
+    expect(result.safety.ruleId).toBe("severe_headache_with_repeated_vomiting");
     expect(result.safety.guidance).toContain("call 911 in the Philippines now");
     expect(result.safety.guidance).toContain("nearest hospital emergency department");
     expect(complete).not.toHaveBeenCalled();
@@ -125,11 +160,11 @@ describe("contextual conversation and emergency regression scenarios", () => {
       expect.objectContaining({ text: expect.stringContaining("About 30 minutes ago"), sourceResponseIds: ["response-1"] }),
     ]));
     expect(brief.relevantBackground).toEqual(expect.arrayContaining([
-      expect.objectContaining({ text: expect.stringContaining("right side"), sourceResponseIds: ["response-2"] }),
-      expect.objectContaining({ text: expect.stringContaining("crushing my skull"), sourceResponseIds: ["response-3"] }),
+      expect.objectContaining({ text: expect.stringContaining("Right side"), sourceResponseIds: ["response-2"] }),
+      expect.objectContaining({ text: expect.stringContaining("worst headache I have ever had"), sourceResponseIds: ["response-3"] }),
     ]));
     expect(brief.currentSymptoms.map((fact) => fact.text)).toEqual(expect.arrayContaining(["Weakness", "Vomiting"]));
-    expect(brief.automatedSafetyFlags[0]?.ruleId).toBe("severe_headache_with_weakness_and_vomiting");
+    expect(brief.automatedSafetyFlags[0]?.ruleId).toBe("severe_headache_with_repeated_vomiting");
     expect(brief.sourceTraceability).toHaveLength(4);
   });
 
@@ -154,9 +189,10 @@ describe("contextual conversation and emergency regression scenarios", () => {
     expect(planNextQuestion(state)).not.toBeNull();
   });
 
-  it("routes a severe headache with either weakness or vomiting for urgent assessment", () => {
+  it("does not route a severe headache with generalized weakness or one vomiting report as an automatic emergency", () => {
     const state = answer(startState(), "I have a severe headache and I feel weak.");
-    expect(assessSafety(state)).toMatchObject({ routed: true, ruleId: "severe_headache_with_associated_symptom" });
+    const withOneVomitingReport = answer(state, "I vomited once", "additional_symptoms", "Have you noticed any other symptoms?");
+    expect(assessSafety(withOneVomitingReport).routed).toBe(false);
   });
 
   it("does not combine unrelated or negated symptoms into the headache emergency rule", () => {

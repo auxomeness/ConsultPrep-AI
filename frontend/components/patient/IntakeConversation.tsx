@@ -9,12 +9,14 @@ type IntakeState = Record<string, unknown>;
 type BriefFact = { text: string; sourceResponseIds: string[]; originalText: string[] };
 type Brief = {
   status: "ai_generated_draft" | "patient_confirmed";
+  patientReportedNarrative?: BriefFact;
   reasonForConsultation: BriefFact[];
   currentSymptoms: BriefFact[];
   symptomTimeline: BriefFact[];
   relevantBackground: BriefFact[];
+  functionalImpact: BriefFact[];
+  patientConcernsAndQuestions: BriefFact[];
   importantUnansweredQuestions: Array<{ question: string; status: string }>;
-  sourceTraceability: Array<{ responseId: string; originalText: string }>;
 };
 type Turn = { kind: "question" | "response"; text: string };
 type ConversationSnapshot = {
@@ -24,8 +26,16 @@ type ConversationSnapshot = {
   turns: Turn[];
   brief: Brief | null;
   safetyStopped: boolean;
+  pendingResponseId?: string | null;
   saved: boolean;
 };
+
+class IntakeRequestError extends Error {
+  constructor(message: string, readonly payload: Record<string, unknown>) {
+    super(message);
+    this.name = "IntakeRequestError";
+  }
+}
 
 const BUSY_STATUSES = [
   "Reading your message",
@@ -51,7 +61,7 @@ async function requestIntake(body: Record<string, unknown>, signal?: AbortSignal
   const result = await response.json() as Record<string, unknown>;
   if (!response.ok) {
     const error = result.error as { message?: string } | undefined;
-    throw new Error(error?.message ?? "The intake request could not be completed.");
+    throw new IntakeRequestError(error?.message ?? "The intake request could not be completed.", result);
   }
   return result;
 }
@@ -70,7 +80,12 @@ function displayAssistantMessage(value: unknown): string {
       return displayAssistantMessage((parsed as { assistantMessage?: unknown }).assistantMessage);
     }
   } catch {
-    // Regular assistant text does not need JSON decoding.
+    if (/^\s*(?:\{\s*["'](?:assistantMessage|assistant_message|askedQuestion|fieldUpdates|fieldId|status)["']\s*:|\[\s*\{|```(?:json)?\b)/i.test(text)) {
+      throw new Error("The AI response was malformed. Your answer is saved; try again.");
+    }
+  }
+  if (text.startsWith("{") || text.startsWith("[")) {
+    throw new Error("The AI response was malformed. Your answer is saved; try again.");
   }
   return text || "I’m sorry, I couldn’t prepare a reply. Please try again.";
 }
@@ -84,6 +99,7 @@ export default function IntakeConversation() {
   const [busyStatusIndex, setBusyStatusIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [safetyStopped, setSafetyStopped] = useState(false);
+  const [pendingResponseId, setPendingResponseId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState("conversation-1");
   const [savedConversations, setSavedConversations] = useState<ConversationSnapshot[]>([]);
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
@@ -114,12 +130,7 @@ export default function IntakeConversation() {
     const startRect = composerStartRectRef.current;
     const composer = composerRef.current;
     composerStartRectRef.current = null;
-    if (
-      !startRect ||
-      !composer ||
-      typeof composer.animate !== "function" ||
-      (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-    ) return;
+    if (!startRect || !composer || !composer.animate || (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false)) return;
 
     const endRect = composer.getBoundingClientRect();
     const deltaX = startRect.left - endRect.left;
@@ -138,8 +149,9 @@ export default function IntakeConversation() {
   useEffect(() => {
     if (!shouldScrollToLatestMessageRef.current) return;
     const chat = chatScrollRef.current;
-    if (chat && typeof chat.scrollTo === "function") {
-      chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+    if (chat) {
+      if (typeof chat.scrollTo === "function") chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+      else chat.scrollTop = chat.scrollHeight;
     }
     shouldScrollToLatestMessageRef.current = false;
   }, [turns, brief]);
@@ -183,6 +195,7 @@ export default function IntakeConversation() {
         turns,
         brief,
         safetyStopped,
+        pendingResponseId,
         saved: true,
       });
     }
@@ -191,13 +204,13 @@ export default function IntakeConversation() {
     } catch {
       setError("This browser could not save the consultation. Check its storage settings and try again.");
     }
-  }, [storageReady, savedConversations, conversationId, activeTitle, isActiveSaved, state, turns, brief, safetyStopped]);
+  }, [storageReady, savedConversations, conversationId, activeTitle, isActiveSaved, state, turns, brief, safetyStopped, pendingResponseId]);
 
   function newConversation() {
     if (busy) return;
     if (state || turns.length > 0) {
       setSavedConversations((previous) => [
-        { id: conversationId, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, saved: isActiveSaved },
+        { id: conversationId, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, pendingResponseId, saved: isActiveSaved },
         ...previous.filter((conversation) => conversation.id !== conversationId),
       ]);
     }
@@ -208,6 +221,7 @@ export default function IntakeConversation() {
     setTurns([]);
     setBrief(null);
     setSafetyStopped(false);
+    setPendingResponseId(null);
     setError(null);
     setDraft("");
   }
@@ -215,7 +229,7 @@ export default function IntakeConversation() {
   function openConversation(conversation: ConversationSnapshot) {
     if (busy || conversation.id === conversationId) return;
     const current = state || turns.length > 0
-      ? { id: conversationId, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, saved: isActiveSaved }
+      ? { id: conversationId, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, pendingResponseId, saved: isActiveSaved }
       : null;
     setSavedConversations((previous) => [
       ...(current ? [current] : []),
@@ -229,13 +243,14 @@ export default function IntakeConversation() {
     setTurns(conversation.turns);
     setBrief(conversation.brief);
     setSafetyStopped(conversation.safetyStopped);
+    setPendingResponseId(conversation.pendingResponseId ?? null);
     setDraft("");
     setError(null);
   }
 
   function conversationById(id: string): ConversationSnapshot | null {
     if (id === conversationId && (state || turns.length > 0)) {
-      return { id, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, saved: isActiveSaved };
+      return { id, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, pendingResponseId, saved: isActiveSaved };
     }
     return savedConversations.find((conversation) => conversation.id === id) ?? null;
   }
@@ -289,6 +304,7 @@ export default function IntakeConversation() {
       setTurns([]);
       setBrief(null);
       setSafetyStopped(false);
+      setPendingResponseId(null);
       setDraft("");
     }
   }
@@ -303,7 +319,7 @@ export default function IntakeConversation() {
 
   async function submitAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.trim() || busy || safetyStopped) return;
+    if (!draft.trim() || busy || safetyStopped || pendingResponseId) return;
     const answer = draft.trim();
     const controller = new AbortController();
     activeRequestControllerRef.current = controller;
@@ -312,15 +328,17 @@ export default function IntakeConversation() {
     setBusy(true);
     setError(null);
     setBrief(null);
+    setPendingResponseId(null);
     try {
       if (!activeState) {
         composerStartRectRef.current = composerRef.current?.getBoundingClientRect() ?? null;
         const started = await requestIntake({ operation: "start" }, controller.signal);
         activeState = started.state as IntakeState;
+        const openingMessage = displayAssistantMessage(started.assistantMessage);
         setState(activeState);
         shouldScrollToLatestMessageRef.current = true;
         setTurns([
-          { kind: "question", text: displayAssistantMessage(started.assistantMessage) },
+          { kind: "question", text: openingMessage },
           { kind: "response", text: answer },
         ]);
       } else {
@@ -331,18 +349,72 @@ export default function IntakeConversation() {
         }
       }
       const result = await requestIntake({ operation: "turn", state: activeState, text: answer }, controller.signal);
+      const assistantMessage = displayAssistantMessage(result.assistantMessage);
       setState(result.state as IntakeState);
       shouldScrollToLatestMessageRef.current = true;
-      setTurns((previous) => [...previous, { kind: "question", text: displayAssistantMessage(result.assistantMessage) }]);
+      setTurns((previous) => [...previous, { kind: "question", text: assistantMessage }]);
       setSafetyStopped(result.safety === true);
+      setPendingResponseId(null);
     } catch (cause) {
+      let recoveredState: IntakeState | null = null;
+      let recoveredResponseId: string | null = null;
+      if (cause instanceof IntakeRequestError) {
+        if (cause.payload.state && typeof cause.payload.state === "object") recoveredState = cause.payload.state as IntakeState;
+        if (typeof cause.payload.pendingResponseId === "string") recoveredResponseId = cause.payload.pendingResponseId;
+      }
       if (controller.signal.aborted) {
-        if (activeState) setState(recordPatientAnswer(activeState as unknown as StructuredIntakeState, answer).state);
-        else setDraft((current) => current || answer);
+        if (activeState) {
+          const lastResponse = (activeState.responses as Array<{ id?: string; text?: string }> | undefined)?.at(-1);
+          const recorded = lastResponse?.text === answer
+            ? { state: activeState as unknown as StructuredIntakeState, responseId: lastResponse.id ?? "" }
+            : recordPatientAnswer(activeState as unknown as StructuredIntakeState, answer);
+          setState(recorded.state as unknown as IntakeState);
+          if (recorded.responseId) setPendingResponseId(recorded.responseId);
+          setError("Response stopped. Your message is saved; try again when you’re ready.");
+        } else setDraft((current) => current || answer);
       } else {
-        setDraft(answer);
+        if (recoveredState) setState(recoveredState);
+        else if (activeState) {
+          const lastResponse = (activeState.responses as Array<{ id?: string; text?: string }> | undefined)?.at(-1);
+          const recorded = lastResponse?.text === answer
+            ? { state: activeState as unknown as StructuredIntakeState, responseId: lastResponse.id ?? "" }
+            : recordPatientAnswer(activeState as unknown as StructuredIntakeState, answer);
+          setState(recorded.state as unknown as IntakeState);
+          recoveredResponseId = recoveredResponseId ?? recorded.responseId;
+        } else {
+          setDraft((current) => current || answer);
+        }
+        if (recoveredResponseId) setPendingResponseId(recoveredResponseId);
         setError(cause instanceof Error ? cause.message : "The AI service could not process this answer.");
       }
+    } finally {
+      if (activeRequestControllerRef.current === controller) {
+        activeRequestControllerRef.current = null;
+        setBusy(false);
+      }
+    }
+  }
+
+  async function retryPendingResponse() {
+    if (!state || !pendingResponseId || busy || safetyStopped) return;
+    const controller = new AbortController();
+    activeRequestControllerRef.current = controller;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await requestIntake({ operation: "retry", state, latestResponseId: pendingResponseId }, controller.signal);
+      const assistantMessage = displayAssistantMessage(result.assistantMessage);
+      setState(result.state as IntakeState);
+      setTurns((previous) => [...previous, { kind: "question", text: assistantMessage }]);
+      shouldScrollToLatestMessageRef.current = true;
+      setSafetyStopped(result.safety === true);
+      setPendingResponseId(null);
+    } catch (cause) {
+      if (!controller.signal.aborted && cause instanceof IntakeRequestError) {
+        if (cause.payload.state && typeof cause.payload.state === "object") setState(cause.payload.state as IntakeState);
+        if (typeof cause.payload.pendingResponseId === "string") setPendingResponseId(cause.payload.pendingResponseId);
+      }
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "The AI service could not retry this response.");
     } finally {
       if (activeRequestControllerRef.current === controller) {
         activeRequestControllerRef.current = null;
@@ -393,7 +465,7 @@ export default function IntakeConversation() {
   }
 
   const currentConversation: ConversationSnapshot | null = state || turns.length > 0
-    ? { id: conversationId, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, saved: isActiveSaved }
+    ? { id: conversationId, title: activeTitle ?? conversationTitle(turns), state, turns, brief, safetyStopped, pendingResponseId, saved: isActiveSaved }
     : null;
   const recentConversations = [
     ...(currentConversation ? [currentConversation] : []),
@@ -417,6 +489,7 @@ export default function IntakeConversation() {
             rows={1}
             maxLength={8_000}
             aria-label="Your answer"
+            aria-describedby={pendingResponseId ? "retry-answer-help" : undefined}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
@@ -429,7 +502,7 @@ export default function IntakeConversation() {
           <button
             type={busy ? "button" : "submit"}
             onClick={busy ? stopGenerating : undefined}
-            disabled={!busy && !draft.trim()}
+            disabled={!busy && (!draft.trim() || Boolean(pendingResponseId))}
             aria-label={busy ? "Stop generating" : "Send answer"}
             className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-base font-semibold leading-none text-accent-contrast hover:bg-accent-hover focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -564,7 +637,19 @@ export default function IntakeConversation() {
         {!safetyStopped && !brief && renderComposer(!state)}
       </div>
 
-      {error && <p role="alert" className="mt-4 rounded-lg border border-error bg-surface px-4 py-3 text-sm leading-6 text-error">{error}</p>}
+      {error && (
+        <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-error bg-surface px-4 py-3 text-sm leading-6 text-error">
+          <span>{error}</span>
+          {pendingResponseId && !safetyStopped && (
+            <span className="inline-flex items-center gap-3">
+              <span id="retry-answer-help" className="sr-only">Your last answer is saved. Retry its response before sending another answer.</span>
+              <button type="button" onClick={retryPendingResponse} disabled={busy} className="rounded-md px-3 py-1 font-medium text-foreground underline underline-offset-4 hover:bg-[#edf1ee] disabled:opacity-50">
+                Try again
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       </section>
     </div>
   );
@@ -575,7 +660,7 @@ function BriefReview({ brief, busy, onConfirm }: { brief: Brief; busy: boolean; 
     <section className="mt-5" aria-label={title}>
       <h4 className="font-semibold">{title}</h4>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6">
-        {facts.map((fact, index) => <li key={`${title}-${index}`}>{fact.text} <span className="text-muted">({fact.sourceResponseIds.join(", ")})</span></li>)}
+        {facts.map((fact, index) => <li key={`${title}-${index}`}>{fact.text}</li>)}
       </ul>
     </section>
   );
@@ -586,10 +671,18 @@ function BriefReview({ brief, busy, onConfirm }: { brief: Brief; busy: boolean; 
         {brief.status === "patient_confirmed" ? "Confirmed · Not submitted" : "AI-generated draft · Review before confirming"}
       </p>
       <h3 id="brief-title" className="mt-2 text-xl font-semibold">Consultation summary</h3>
+      {brief.patientReportedNarrative && (
+        <section className="mt-5" aria-label="What to share with your clinician">
+          <h4 className="font-semibold">What to share with your clinician</h4>
+          <p className="mt-2 text-sm leading-7">{brief.patientReportedNarrative.text}</p>
+        </section>
+      )}
       {section("Reason for consultation", brief.reasonForConsultation)}
       {section("Symptoms reported", brief.currentSymptoms)}
       {section("Timeline", brief.symptomTimeline)}
+      {section("How this affects you", brief.functionalImpact)}
       {section("Relevant context", brief.relevantBackground)}
+      {section("Your concerns and questions", brief.patientConcernsAndQuestions)}
       {brief.importantUnansweredQuestions.length > 0 && (
         <section className="mt-5" aria-label="Information still to clarify">
           <h4 className="font-semibold">Information still to clarify</h4>
@@ -598,15 +691,7 @@ function BriefReview({ brief, busy, onConfirm }: { brief: Brief; busy: boolean; 
           </ul>
         </section>
       )}
-      {brief.sourceTraceability.length > 0 && (
-        <details className="mt-5 border-t border-line pt-4">
-          <summary className="cursor-pointer font-semibold">Original answers used for this draft</summary>
-          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6">
-            {brief.sourceTraceability.map((source) => <li key={source.responseId}>{source.originalText}</li>)}
-          </ol>
-        </details>
-      )}
-      <p className="mt-5 text-sm leading-6 text-muted">This summary organizes what was shared. It is not a diagnosis or treatment advice, and no clinician has reviewed it.</p>
+      <p className="mt-5 text-sm leading-6 text-muted">Show this summary to your doctor or clinician to help them understand what you’ve been experiencing and inform their assessment. ConsultPrep AI can make mistakes; this is not a diagnosis or treatment advice, and no clinician has reviewed it.</p>
       {brief.status !== "patient_confirmed" && (
         <button
           type="button"

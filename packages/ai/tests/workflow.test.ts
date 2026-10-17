@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyIntakeTurn, confirmPatientBrief, recordPatientAnswer, recordPatientCorrection } from "../src/workflow.js";
-import { nextRequiredInterviewQuestion } from "../src/service.js";
+import { nextRequiredInterviewQuestion, planNextQuestion } from "../src/service.js";
 import type { IntakeState } from "../src/contracts.js";
 
 const state: IntakeState = {
@@ -20,6 +20,137 @@ const state: IntakeState = {
 };
 
 describe("patient correction and completion transitions", () => {
+  it("records a summary request without extracting it as a clinical answer", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a headache.", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      questionsAsked: ["Where is the headache?"] ,
+      questionHistory: [{ questionId: "headache_location", targetField: "headache_location", status: "asked", sourceResponseIds: [] }],
+      activeQuestionId: "headache_location",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(active, "Organize now");
+    expect(recorded.state.responses.at(-1)?.text).toBe("Organize now");
+    expect(recorded.state.fields).toEqual(active.fields);
+    expect(recorded.state.questionHistory).toEqual(active.questionHistory);
+    expect(recorded.state.currentIntent).toBe("summary");
+  });
+
+  it("keeps a bare correction of an assistant misattribution out of the clinical facts", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a headache.", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      questionsAsked: ["For the cold symptoms you mentioned, what are you noticing in your nose, throat, or ears?"],
+      activeQuestionId: "ent_location",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(active, "never said that");
+    expect(recorded.state.responses.at(-1)?.text).toBe("never said that");
+    expect(recorded.state.fields).toEqual(active.fields);
+    expect(recorded.state.currentIntent).toBe("correction");
+  });
+
+  it("records a direct pain-relief question without treating it as a headache location answer", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a headache.", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      questionsAsked: ["Where do you feel the headache, and does it stay there or move?"],
+      activeQuestionId: "headache_location",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(active, "What can I do instead to ease the pain?");
+    expect(recorded.state.fields).toContainEqual(expect.objectContaining({
+      fieldId: "patient_question",
+      value: "What can I do instead to ease the pain",
+      sourceResponseIds: [recorded.responseId],
+    }));
+    expect(recorded.state.fields.some((field) => field.fieldId === "headache_location" && field.sourceResponseIds.includes(recorded.responseId))).toBe(false);
+  });
+
+  it("accumulates separate patient questions rather than marking them as conflicting reports", () => {
+    const first = recordPatientAnswer(state, "What can I do to ease the pain?");
+    const second = recordPatientAnswer(first.state, "Do you have any tips before I see a doctor?");
+    expect(second.state.fields).toContainEqual(expect.objectContaining({
+      fieldId: "patient_question",
+      value: "What can I do to ease the pain; Do you have any tips before I see a doctor",
+      status: "reported",
+      sourceResponseIds: [first.responseId, second.responseId],
+    }));
+  });
+
+  it("keeps workflow questions in the transcript without treating them as clinical questions", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a headache.", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      questionsAsked: ["Where do you feel the headache?"],
+      activeQuestionId: "headache_location",
+      completion: "in_progress",
+    };
+
+    const recorded = recordPatientAnswer(active, "What's next then?");
+
+    expect(recorded.state.responses.at(-1)?.text).toBe("What's next then?");
+    expect(recorded.state.fields).toEqual(active.fields);
+    expect(recorded.state.currentIntent).toBe("workflow_question");
+  });
+
+  it("keeps a no-other-symptoms answer when the same message asks what to do", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a crushing headache and cramping.", sequence: 0 }],
+      fields: [
+        { fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] },
+        { fieldId: "cramping", value: "Cramping", status: "reported", sourceResponseIds: ["r1"] },
+      ],
+      questionsAsked: ["Have you noticed any other changes along with the headache?"],
+      questionHistory: [{ questionId: "headache_associated", targetField: "headache_associated_changes", status: "asked", sourceResponseIds: [] }],
+      activeQuestionId: "headache_associated",
+      completion: "in_progress",
+    };
+
+    const recorded = recordPatientAnswer(active, "none, just that, maybe it’s a migraine idk what should i do");
+    expect(recorded.state.currentIntent).toBe("guidance_request");
+    expect(recorded.state.fields).toContainEqual(expect.objectContaining({
+      fieldId: "headache_associated_changes",
+      value: "No other changes reported; headache remains",
+      status: "patient_denied",
+      sourceResponseIds: [recorded.responseId],
+    }));
+    expect(recorded.state.fields.some((field) => field.fieldId === "headache_location" && field.sourceResponseIds.includes(recorded.responseId))).toBe(false);
+  });
+
+  it.each([
+    ["not sure", "unknown"],
+    ["idk", "unknown"],
+    ["let's not do that", "declined"],
+    ["can we skip this", "declined"],
+  ])("records %s for an active onset question and moves on", (answer, status) => {
+    const onsetQuestion: IntakeState = {
+      ...state,
+      concern: "I have a headache",
+      responses: [{ id: "r1", text: "I have a headache", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      questionsAsked: ["When did the headache begin?"],
+      questionHistory: [{ questionId: "symptom_onset__headache", targetField: "symptom_onset", status: "asked", sourceResponseIds: [] }],
+      activeQuestionId: "symptom_onset__headache",
+      completion: "in_progress",
+    };
+
+    const recorded = recordPatientAnswer(onsetQuestion, answer);
+    expect(recorded.state.fields).toContainEqual(expect.objectContaining({
+      fieldId: "symptom_onset_headache",
+      value: null,
+      status,
+      sourceResponseIds: [recorded.responseId],
+    }));
+    expect(recorded.state.questionHistory?.at(-1)).toMatchObject({ status: status === "declined" ? "declined" : "answered" });
+    expect(planNextQuestion(recorded.state)?.questionId).toBe("headache_location");
+  });
+
   it("records an answer with source-linked extracted facts and applies the next AI turn", () => {
     const openingState: IntakeState = {
       schemaVersion: "1.0",
@@ -48,6 +179,60 @@ describe("patient correction and completion transitions", () => {
     expect(continued.activeQuestionId).toBe("headache_location");
     expect(continued.questionsAsked.at(-1)).toBe("Where is the headache?");
     expect(continued.responses).toEqual(recorded.state.responses);
+  });
+
+  it("keeps the active question while the assistant answers a side question", () => {
+    const stateWithQuestion: IntakeState = {
+      ...state,
+      activeQuestionId: "headache_associated",
+      questionsAsked: ["Have you noticed any other changes along with the headache?"],
+      responses: [{ id: "r1", text: "What can I do today?", sequence: 0, questionBankId: "headache_associated" }],
+    };
+    const continued = applyIntakeTurn(stateWithQuestion, {
+      askedQuestion: null,
+      askedQuestionId: null,
+      fieldUpdates: [],
+    });
+    expect(continued.activeQuestionId).toBe("headache_associated");
+  });
+
+  it("does not turn a repetition complaint into symptom facts or overwrite facts already captured", () => {
+    const stateWithKnownLocation: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "My headache stays at the front", sequence: 0 }],
+      fields: [{ fieldId: "headache_location", value: "Front of my head; Does not move", status: "reported", sourceResponseIds: ["r1"] }],
+      activeQuestionId: "headache_location",
+      questionsAsked: ["Where do you feel the headache, and does it stay there or move?"],
+      questionHistory: [{ questionId: "headache_location", targetField: "headache_location", status: "asked", sourceResponseIds: [] }],
+    };
+
+    const recorded = recordPatientAnswer(stateWithKnownLocation, "I already answered");
+
+    expect(recorded.state.fields.find((field) => field.fieldId === "headache_location")).toEqual(stateWithKnownLocation.fields[0]);
+    expect(recorded.state.fields.every((field) => !field.sourceResponseIds.includes(recorded.responseId))).toBe(true);
+    expect(recorded.state.responses.at(-1)?.questionBankId).toBe("headache_location");
+    expect(recorded.state.questionHistory?.at(-1)).toMatchObject({ status: "answered", sourceResponseIds: ["r1"] });
+    expect(recorded.state.currentIntent).toBe("repetition_complaint");
+  });
+
+  it("leaves an unanswered repeated question blank and marks it skipped instead of re-asking", () => {
+    const unanswered: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a headache", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      activeQuestionId: "headache_location",
+      questionsAsked: ["Where do you feel the headache, and does it stay there or move?"],
+      questionHistory: [{ questionId: "headache_location", targetField: "headache_location", status: "asked", sourceResponseIds: [] }],
+    };
+
+    const recorded = recordPatientAnswer(unanswered, "I already said that");
+    const applied = applyIntakeTurn(recorded.state, { assistantMessage: "I’ll leave that blank for now.", fieldUpdates: [], askedQuestion: null });
+
+    expect(recorded.state.fields.find((field) => field.fieldId === "headache_location")).toBeUndefined();
+    expect(recorded.state.fields.find((field) => field.fieldId === "correction_note")).toBeUndefined();
+    expect(recorded.state.questionHistory?.at(-1)).toMatchObject({ status: "skipped", sourceResponseIds: [recorded.responseId] });
+    expect(applied.activeQuestionId).toBeUndefined();
+    expect(applied.recentAssistantMessages?.at(-1)).toBe("I’ll leave that blank for now.");
   });
 
   it("keeps the original correction source and applies the corrected onset with its own source", () => {
