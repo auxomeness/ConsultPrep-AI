@@ -167,7 +167,7 @@ function normalizeLocalOutput(raw: string, messages: ChatMessage[]): string {
         const askedQuestion = typeof parsed.askedQuestion === "string" && parsed.askedQuestion.trim()
           ? parsed.askedQuestion.trim()
           : null;
-        return JSON.stringify({ assistantMessage: assistantMessage.trim(), askedQuestion });
+        return JSON.stringify({ assistantMessage: unwrapNestedAssistantMessage(assistantMessage), askedQuestion });
       }
     }
     return cleaned;
@@ -175,16 +175,9 @@ function normalizeLocalOutput(raw: string, messages: ChatMessage[]): string {
     // Continue below to recover a concise response from common local-model formats.
   }
 
-  const messageMatch = /["'](?:assistantMessage|assistant_message|message|response)["']\s*:\s*("(?:\\.|[^"\\])*")/i.exec(cleaned);
-  if (messageMatch?.[1]) {
-    try {
-      const assistantMessage = JSON.parse(messageMatch[1]) as unknown;
-      if (typeof assistantMessage === "string" && assistantMessage.trim()) {
-        return JSON.stringify({ assistantMessage: assistantMessage.trim(), askedQuestion: null });
-      }
-    } catch {
-      // Fall through to wrapping the model's plain text below.
-    }
+  const recoveredMessage = extractStructuredAssistantMessage(cleaned);
+  if (recoveredMessage) {
+    return JSON.stringify({ assistantMessage: unwrapNestedAssistantMessage(recoveredMessage), askedQuestion: null });
   }
 
   const intakeRequest = isLocalIntakeRequest(messages);
@@ -214,6 +207,55 @@ function normalizeLocalOutput(raw: string, messages: ChatMessage[]): string {
     return JSON.stringify({ answer: cleaned });
   }
   return cleaned;
+}
+
+/** Recover valid or truncated model JSON without ever showing its envelope. */
+function unwrapNestedAssistantMessage(raw: string): string {
+  let message = raw.trim();
+  for (let depth = 0; depth < 3; depth += 1) {
+    const candidate = message.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    if (!candidate.startsWith("{")) break;
+    const extracted = extractStructuredAssistantMessage(candidate);
+    if (!extracted || extracted === message) break;
+    message = extracted.trim();
+  }
+  return message;
+}
+
+function extractStructuredAssistantMessage(content: string): string | null {
+  const property = /["'](?:assistantMessage|assistant_message|message|response)["']\s*:\s*"/i.exec(content);
+  if (!property) return null;
+  const valueStart = property.index + property[0].length;
+  let escaped = false;
+  for (let index = valueStart; index < content.length; index += 1) {
+    const character = content[index]!;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      try {
+        const value = JSON.parse(`"${content.slice(valueStart, index)}"`) as unknown;
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      } catch {
+        return null;
+      }
+    }
+  }
+  // A short generation budget may stop inside a JSON string. Closing just that
+  // string recovers the patient-facing text while discarding the broken wrapper.
+  let fragment = content.slice(valueStart).replace(/\\$/, "");
+  try {
+    const value = JSON.parse(`"${fragment}"`) as unknown;
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  } catch {
+    fragment = fragment.replace(/\\n/g, " ").replace(/\\r/g, " ").replace(/\\t/g, " ");
+    return fragment.trim() || null;
+  }
 }
 
 function isLocalIntakeRequest(messages: ChatMessage[]): boolean {

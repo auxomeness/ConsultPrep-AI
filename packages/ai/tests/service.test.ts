@@ -97,6 +97,56 @@ describe("AI service behavior with mocked inference", () => {
     expect(result.askedQuestionId).toBe("main_concern");
   });
 
+  it("redirects a guessing-game reply to the health intake without adding a fabricated concern", async () => {
+    const { service, client } = await serviceWith("not-json");
+    const waitingForConcern: IntakeState = {
+      schemaVersion: "1.0",
+      concern: "",
+      responses: [{ id: "r1", text: "hi", sequence: 0 }],
+      fields: [],
+      questionsAsked: ["What have you been feeling?"],
+      recentAssistantMessages: ["Hi. What have you been feeling?"],
+      activeQuestionId: "main_concern",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(waitingForConcern, "guess what i am feeling right now lol");
+    const result = await service.continueIntake({ state: recorded.state, latestResponseId: recorded.responseId });
+
+    if ("safety" in result) throw new Error("Expected an intake redirect, received a safety route");
+    expect(recorded.state.currentIntent).toBe("off_topic");
+    expect(recorded.state.fields).toEqual([]);
+    expect(result.assistantMessage).toMatch(/can’t reliably guess/i);
+    expect(result.assistantMessage).toMatch(/health detail/i);
+    expect(result.assistantMessage).toMatch(/what symptom or health concern/i);
+    expect(result.askedQuestionId).toBe("main_concern");
+    expect(client.complete).not.toHaveBeenCalled();
+  });
+
+  it("answers 'are you sure' and reopens the right intake question instead of disclaiming again", async () => {
+    const { service, client } = await serviceWith("not-json");
+    const previousState: IntakeState = {
+      schemaVersion: "1.0",
+      concern: "",
+      responses: [{ id: "r1", text: "hi", sequence: 0 }],
+      fields: [],
+      questionsAsked: ["What have you been feeling?"],
+      recentAssistantMessages: ["I can’t determine the cause from chat. A qualified healthcare professional can assess what you’ve described."],
+      activeQuestionId: "main_concern",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(previousState, "are u sure?");
+    const result = await service.continueIntake({ state: recorded.state, latestResponseId: recorded.responseId });
+
+    if ("safety" in result) throw new Error("Expected a clarification, received a safety route");
+    expect(recorded.state.currentIntent).toBe("clarification_request");
+    expect(recorded.state.fields).toEqual([]);
+    expect(result.assistantMessage).toMatch(/can’t be certain about the cause from chat/i);
+    expect(result.assistantMessage).toMatch(/help organize what you’re experiencing/i);
+    expect(result.assistantMessage).toMatch(/what symptom or health concern/i);
+    expect(result.askedQuestionId).toBe("main_concern");
+    expect(client.complete).not.toHaveBeenCalled();
+  });
+
   it("keeps the assistant from echoing the patient's symptoms in first person", async () => {
     const { service } = await serviceWith(JSON.stringify({
       assistantMessage: "I’m feeling a headache with chills and a temperature of 39.2 degrees. When did each symptom begin?",

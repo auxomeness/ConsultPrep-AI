@@ -46,6 +46,16 @@ describe("conversation intent handling", () => {
     expect(classifyConversationIntent({ text: "hi", isFirstPatientTurn: false })).toBe("greeting");
   });
 
+  it("redirects a guessing game instead of treating it as a health detail", () => {
+    expect(classifyConversationIntent({ text: "guess what i am feeling right now lol" })).toBe("off_topic");
+    expect(classifyConversationIntent({ text: "guess what, I have a headache" })).toBe("continue");
+  });
+
+  it.each(["are u sure", "are you sure?", "huh wdym", "wdym", "what do you mean?"]) (
+    "recognizes a request to clarify the previous assistant turn: %s",
+    (text) => expect(classifyConversationIntent({ text })).toBe("clarification_request"),
+  );
+
   it.each(["I already answered", "I already said that", "I told you already", "You asked me that already"]) (
     "recognizes a standalone repetition complaint without treating it as a fact: %s",
     (text) => expect(classifyConversationIntent({ text })).toBe("repetition_complaint"),

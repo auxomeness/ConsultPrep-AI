@@ -37,12 +37,16 @@ export function classifyConversationIntent(input: {
   const text = input.text.trim();
   if (isRecallRequest(text)) return "recall_request";
   if (isStandaloneRepetitionComplaint(text)) return "repetition_complaint";
+  if (/^\s*(?:are\s+(?:u|you)\s+sure|you\s+sure|huh\b.*\bwdym\b|wdym\b.*\bhuh\b)[?!.,\s]*$/i.test(text)) return "clarification_request";
+  if (/^\s*(?:huh|wdym|what do you mean|can you explain|i don't understand|i do not understand)\b/i.test(text)) return "clarification_request";
+  if (/\b(?:guess what(?:\s+(?:i(?:'m| am))?\s+feeling)?|guess how i feel|guess my symptoms|can you guess how i feel)\b/i.test(text)
+    && !/\b(?:headache|pain|ache|fever|cold|cough|sore|nausea|vomit|dizz(?:y|iness)|weak|rash|breath|vision|eye|stomach|throat|cramp|symptom|chills?)\b/i.test(text)) return "off_topic";
   if (/^\/summary$/i.test(text)
     || /\b(?:summari[sz]e|organize|put together|combine).{0,70}\b(?:now|this|what i (?:said|shared)|doctor|clinician|report|summary|notes?)\b/i.test(text)
     || /\b(?:report|summary)\b.{0,70}\b(?:doctor|clinician|what i (?:said|shared)|this)\b/i.test(text)) return "summary";
   if (FINISH_PATTERNS.some((pattern) => pattern.test(text))) return "finish";
   if (communicationPreferencesFromText(text)) return "format_preference";
-  if (/^\s*(?:huh\??|wdym\??|what do you mean\??|can you explain(?: that| the question)?\??|i don't understand\??|i do not understand\??)[.!\s]*$/i.test(text)) return "clarification_request";
+  if (/^\s*(?:can you explain(?: that| the question)?|i don't understand|i do not understand)\??[.!\s]*$/i.test(text)) return "clarification_request";
   if (/^\s*(?:none|nothing|no|nope|nothing else|that's all|that is all|just what i said)[.!\s]*$/i.test(text)) return "continue";
   if (WORKFLOW_QUESTION.test(text)) return "workflow_question";
   if (GUIDANCE_REQUEST.test(text)) return "guidance_request";

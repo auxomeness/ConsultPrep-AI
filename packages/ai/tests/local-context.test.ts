@@ -52,6 +52,23 @@ describe("local model conversation context", () => {
     expect(messages[0][1]!.content).not.toMatch(/Return JSON|Reply in JSON/);
   });
 
+  it.each([
+    '{"assistantMessage":"I have a crushing headache and cramping. Where do you feel the headache?',
+    JSON.stringify({ assistantMessage: JSON.stringify({ assistantMessage: "I’ve noted that detail." }), askedQuestion: null }),
+  ])("recovers nested or truncated local-model JSON as patient-facing text", async (raw) => {
+    mocks.generate.mockImplementationOnce(async () => [{ generated_text: raw }]);
+    const client = new LocalQwenChatClient();
+    const result = await client.complete([{ role: "user", content: JSON.stringify({
+      task: "Conduct a brief pre-consultation interview",
+      data: { state: { responses: [], fields: [] }, latestResponse: { text: "I have a headache" }, patientIntent: "continue" },
+    }) }], { maxTokens: 18 });
+
+    const parsed = JSON.parse(result) as { assistantMessage: string };
+    expect(parsed.assistantMessage).not.toMatch(/^\s*\{/);
+    expect(parsed.assistantMessage).not.toContain('"assistantMessage"');
+    expect(parsed.assistantMessage).toMatch(/headache|noted that detail/i);
+  });
+
   it("puts the exact latest patient message next to the full history for direct questions", async () => {
     const client = new LocalQwenChatClient();
     await client.complete([{ role: "user", content: JSON.stringify({

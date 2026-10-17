@@ -98,6 +98,53 @@ function formatPlannedQuestionGroup(questions: PlannedQuestion[], state: IntakeS
     : lines[0]!;
 }
 
+function redirectOffTopicTurn(state: IntakeState, latestText: string): NextTurnResult {
+  const activeQuestionIds = state.activeQuestionIds?.length ? state.activeQuestionIds
+    : state.activeQuestionId ? [state.activeQuestionId] : [];
+  const activeQuestionId = activeQuestionIds[0] ?? "main_concern";
+  const question = activeQuestionId === "main_concern"
+    ? "What symptom or health concern would you like help organizing for your doctor?"
+    : state.questionsAsked.at(-1) ?? "What symptom or health concern would you like help organizing for your doctor?";
+  const prefix = /\bguess\b/i.test(latestText)
+    ? "I can’t reliably guess how you’re feeling, so I haven’t added that as a health detail."
+    : "That message doesn’t give me enough health information to add to the visit notes.";
+  return NextTurnResultSchema.parse({
+    assistantMessage: `${prefix} ${question}`,
+    askedQuestion: question,
+    askedQuestionId: activeQuestionId,
+    askedQuestionIds: activeQuestionIds.length ? activeQuestionIds : [activeQuestionId],
+    fieldUpdates: [],
+  });
+}
+
+function clarifyPreviousTurn(state: IntakeState): NextTurnResult {
+  const activeQuestionIds = state.activeQuestionIds?.length ? state.activeQuestionIds
+    : state.activeQuestionId ? [state.activeQuestionId] : [];
+  const activeQuestionId = activeQuestionIds[0] ?? "main_concern";
+  const clarificationQuestion = selectedQuestionsForTurn(state, "clarification_request")[0]?.question;
+  const previousQuestion = state.questionsAsked.at(-1) ?? "";
+  const question = clarificationQuestion?.startsWith("When you say")
+    ? clarificationQuestion
+    : activeQuestionId === "main_concern"
+      ? /how would you describe|in your own words/i.test(previousQuestion)
+        ? "What feels wrong or different? You can describe the main symptom or concern in your own words."
+        : "What symptom or health concern would you like help organizing for your doctor?"
+      : QUESTION_BANK.find((item) => item.id === activeQuestionId)?.question
+        ?? previousQuestion
+        ?? "What symptom or health concern would you like help organizing for your doctor?";
+  const previousReply = state.recentAssistantMessages?.at(-1) ?? "";
+  const explanation = /(?:can’t|can't|cannot)\s+(?:tell|determine|assess).{0,100}\b(?:cause|chat)\b/i.test(previousReply)
+    ? "I mean I can’t be certain about the cause from chat. A clinician can assess that, and I can help organize what you’re experiencing into notes for the visit."
+    : "Sorry, I wasn’t clear. I’ll ask in simpler words so I can make useful notes for your visit.";
+  return NextTurnResultSchema.parse({
+    assistantMessage: `${explanation} ${question}`,
+    askedQuestion: question,
+    askedQuestionId: activeQuestionId,
+    askedQuestionIds: activeQuestionIds.length ? activeQuestionIds : [activeQuestionId],
+    fieldUpdates: [],
+  });
+}
+
 function selectedQuestionsForTurn(state: IntakeState, intent: ConversationIntent): PlannedQuestion[] {
   const latestAnswer = state.responses.at(-1)?.text ?? "";
   const previousQuestion = state.questionsAsked.at(-1) ?? "";
@@ -121,7 +168,7 @@ function selectedQuestionsForTurn(state: IntakeState, intent: ConversationIntent
   const planned = planNextQuestions(state);
   if (planned.length) return planned;
   const noConcern = !state.fields.some((field) => field.fieldId === "primary_concern" || isSymptomReportField(field.fieldId));
-  if (!noConcern || !["format_preference", "clarification_request", "greeting", "identity_question", "vague_opening", "ambiguous_opening"].includes(intent)) return [];
+  if (!noConcern || !["format_preference", "clarification_request", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening"].includes(intent)) return [];
   return [{
     questionId: "main_concern",
     category: "universal",
@@ -457,6 +504,8 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
           fieldUpdates: [],
         });
       }
+      if (latest && intent === "off_topic") return redirectOffTopicTurn(state, latest.text);
+      if (latest && intent === "clarification_request") return clarifyPreviousTurn(state);
       const openingNoSymptoms = Boolean(latest && isNoAdditionalSymptomsReply(latest.text)
         && state.responses.length === 1
         && (state.activeQuestionId === "main_concern" || /what have you been feeling|what symptoms are you experiencing|what brings you in/i.test(state.questionsAsked.at(-1) ?? "")));
