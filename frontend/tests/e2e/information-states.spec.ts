@@ -14,7 +14,7 @@ test("the separate synthetic information-state preview is reachable and preserve
   await expect(page).toHaveURL(/\/intake\/states$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Information-state preview");
   await expect(page.getByText(/Synthetic UI-development preview/)).toBeVisible();
-  await expect(page.getByText(/These five labels are provisional/)).toBeVisible();
+  await expect(page.getByText(/These five labels match Member 1/)).toBeVisible();
   for (const label of stateLabels) {
     await expect(page.getByRole("article", { name: label })).toBeVisible();
   }

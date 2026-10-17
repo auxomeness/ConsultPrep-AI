@@ -1,8 +1,8 @@
 # ConsultPrep AI — Proposed Acceptance Criteria
 
-Status: Phase 2 proposal, persisted for Phase 3 traceability. **No full integration criterion has passed.** Later frontend-only checks are recorded below. Integration criteria are blocked until Members 1 and 2 deliver the corresponding contracts and runnable services. Use synthetic data only.
+Status: Phase 2 proposal, persisted for Phase 3 traceability. **No full integration criterion has passed.** Later frontend-only checks are recorded below. Member 1 now has a concrete v1.0 AI contract and library; the patient application still lacks Member 2 routes, persistence, authenticated review, and authoritative workflow operations. Use synthetic data only.
 
-These criteria describe observable outcomes. Final API shapes, authorization rules, persistence behavior, AI behavior, and case status values remain with the responsible members or shared contract.
+These criteria describe observable outcomes. The AI v1.0 schema and Member 2 provisional database/request shapes exist; final application API shapes, authorization, persistence behavior, and status transitions remain with the responsible members or shared contract.
 
 ## Phase 6 frontend-only evidence (2026-10-17)
 
@@ -20,6 +20,23 @@ See [Phase 6 patient interaction evidence](phase-6-patient-interaction-preview.m
 The static `/intake/states` prototype verifies presentation of five **provisional** labels with synthetic content: Reported retains a patient statement; Unknown retains explicit uncertainty; Not answered invents no response; Unclear retains ambiguous wording; Conflicting displays both statements without choosing one. Text labels and explanations carry meaning without relying on color. See [Phase 7 scenario evidence](phase-7-information-state-preview.md).
 
 This is **synthetic presentation prototype verified**, not integrated behavior. C05 remains blocked by Member 1 information-state/source contracts, Member 2 authorized clinician data, and shared state semantics. P08 skip and P09 uncertainty interactions were not implemented or evaluated. No criterion is newly passed in full.
+
+## Phase 8 merged-contract review evidence (2026-10-17)
+
+Member 1's v1.0 `InformationStatusSchema` now includes the five Phase 7 labels; their semantics are no longer wholly provisional on the AI side. The Phase 7 sentence above records its historical gate at the time. Member 2's authorized case/review data and the shared application mapping remain unavailable. `/intake/review` is a visibly synthetic, contract-shaped preview and one component test renders a real Member 1 brief-builder result from made-up input. Neither is a live patient review. See [Phase 8 evidence](phase-8-patient-review-provenance.md).
+
+| Criterion | Phase 8 classification | Observed evidence / remaining gate |
+|---|---|---|
+| P02 | Partially verified | Existing local empty/whitespace validation and preservation tests still pass; no real response save. |
+| P03 | Partially verified | Existing local draft and exact-text tests still pass; no persisted question association. |
+| P05 | Blocked | AI interview library now exists, but no saved-response-to-valid-follow-up application path was run. The UI follow-up remains a fixed synthetic example. |
+| P06 | Blocked | No app AI pending signal or inference operation was observed. |
+| P10 | Verified presentation only | Fixture correction points to a prior response and keeps both statements visible; no persistence acknowledgement. |
+| P11 | Verified presentation only | Draft labels and source disclosure passed component/Chromium tests; one component test used `buildStructuredBrief`. No authenticated brief retrieval or real AI inference was run. |
+| P12 | Blocked | No brief correction/version save operation or failure recovery. |
+| P13 | Blocked | No authoritative patient confirmation operation; preview control is disabled. |
+
+No criterion was upgraded to **verified by actual integration**. The review browser checks are fixture presentation checks, not service integration tests.
 
 ## Patient criteria
 

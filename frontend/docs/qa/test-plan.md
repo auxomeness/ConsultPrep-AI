@@ -1,15 +1,15 @@
-# Phase 7 frontend test plan
+# Frontend test plan through Phase 8
 
-Status: automated checks for the **frontend development preview** through one synthetic follow-up and a separate information-state prototype. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
+Status: automated checks for the **frontend development preview** through one synthetic follow-up, an information-state gallery, and a contract-shaped patient review preview. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
 
 ## Scope and environment
 
-- Routes: `/` introduction; `/intake` initial concern → exact local response presentation → one fixed synthetic question → second local draft; `/intake/states` five provisional information-state examples.
+- Routes: `/` introduction; `/intake` initial concern → exact local response presentation → one fixed synthetic question → second local draft; `/intake/states` five synthetic examples whose labels match Member 1 v1.0 statuses; `/intake/review` contract-shaped synthetic review, separate from the local draft.
 - Host used for this verification: Windows, Node.js 24.18.1, npm 11.16.0.
 - Application: Next.js 16.4.2 App Router, React 19.3.0, strict TypeScript, Tailwind CSS 4.
 - Component runner: Vitest 4.1.11, jsdom, React Testing Library, DOM Testing Library, and user-event.
 - Browser runner: Playwright with headless Chromium; its web server runs a local **Webpack production build** on port 3217. This is a comparison path while the standard Turbopack build defect is open.
-- Tailwind uses `@tailwindcss/postcss` for both build paths. No backend, AI, authentication, or service mocks are present.
+- Tailwind uses `@tailwindcss/postcss` for both build paths. No backend, authentication, or service mocks are present. One Phase 8 component test calls the real Member 1 brief builder with synthetic state; no live inference or app service is called.
 
 ## Commands
 
@@ -87,3 +87,23 @@ These tests do **not** verify AI integration, backend persistence, authenticatio
 ## Phase 7 run (2026-10-17)
 
 `npm run lint` and `npm run typecheck` passed. `npm run test:run` passed (12 component tests). `npm run test:e2e` passed (11 Chromium tests, including its Webpack build) outside the sandbox; the initial sandboxed build stopped with `EPERM` creating a `.next` prerender directory before browser tests ran. Three consecutive standard Turbopack builds outside the sandbox passed (3/3, 0 failures). QA-001 remains open because earlier same-host failures establish an intermittent pattern. See [Phase 7 scenario evidence](phase-7-information-state-preview.md).
+
+## Phase 8 review coverage and boundary (2026-10-17)
+
+The review component uses Member 1 v1.0 types, while the route uses a manual synthetic fixture and makes that origin explicit. The AI sibling package's locked dependencies must be installed (`npm ci --ignore-scripts` from `packages/ai`) for frontend type checking and the library-to-component test in this checkout. This does not connect a service or install an AI model.
+
+| Level | Check | Evidence target |
+|---|---|---|
+| Component | Original response and later correction remain separately visible; synthetic draft is labeled as such. | P10/P11 presentation only. |
+| Component | Source disclosure resolves the exact response and retains focus on its action; missing and mismatched sources are explicit. | Source presentation and local consistency. |
+| Component | Unknown, Not answered, Unclear, and Conflicting remain distinct; both conflicting originals display. | Information integrity presentation. |
+| Component | Correction and confirmation controls remain disabled; no saved/submitted claim. | Honest integration boundary. |
+| Component | Missing, invalid, unavailable review messages are distinct. | Isolated state presentation; no API failure tested. |
+| Library-to-component | Feed a real `buildStructuredBrief` result from synthetic `IntakeState` into `PatientReview`; inspect a source ID and original text. | Member 1 algorithm-to-UI contract compatibility, not AI inference or persistence. |
+| Browser | Navigate from `/intake` to `/intake/review`; inspect synthetic notice, keyboard source open/close and focus, disabled actions, no non-GET request. | Fixture browser presentation. |
+| Browser | Check review at 375, 768 and 1280px; inspect both conflict sources and document horizontal overflow. | Responsive preview. |
+| Package tests | Run `packages/ai` typecheck/test and Member 2 Node contract test. | Existing library/contract behavior only. |
+
+The Phase 8 run passed 21/21 frontend component tests, 15/15 Chromium tests outside the sandbox, 136/136 Member 1 tests, and 6/6 Member 2 contract tests. `npm run lint` and `npm run typecheck` passed. Three standard Turbopack builds outside the sandbox passed, with no recurrence of QA-001; the defect remains open. The first sandboxed browser command built but its local server did not become reachable, so it was interrupted and rerun outside the sandbox. See [Phase 8 evidence](phase-8-patient-review-provenance.md).
+
+No test reaches a real session, response save, AI inference, review retrieval, correction save, confirmation, submission, database, or authenticated route. Add those tests only when Member 2 supplies the operations and shared contracts; do not count current fixtures as integrated coverage.

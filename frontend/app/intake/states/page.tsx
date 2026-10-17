@@ -15,14 +15,14 @@ export default function InformationStatesPage() {
       </nav>
 
       <div className="mt-9 rounded-xl border border-line bg-preview px-5 py-4 text-sm leading-6 text-preview-foreground" role="note">
-        <strong>Synthetic UI-development preview.</strong> These five labels are provisional. The examples are made up, were not produced by AI, and are not saved or connected to a patient or clinician record.
+        <strong>Synthetic UI-development preview.</strong> These five labels match Member 1&apos;s v1.0 information-status contract. The examples are made up, were not produced by AI, and are not saved or connected to a patient or clinician record.
       </div>
 
       <header className="mt-10">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">Patient information preview</p>
         <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Information-state preview</h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-          Compare how reported, unknown, unanswered, unclear, and conflicting information could be shown. Original patient wording stays visible when a response exists.
+          Compare how reported, unknown, unanswered, unclear, and conflicting information can be shown. Original patient wording stays visible when a response exists.
         </p>
       </header>
 

@@ -1,4 +1,5 @@
-// UI-development fixtures only. Labels and shape are provisional, not an AI or backend contract.
+// UI-development fixtures only. These labels match Member 1's v1.0 information statuses;
+// examples and layout remain synthetic, and no backend review data is loaded here.
 const examples = [
   {
     label: "Reported",

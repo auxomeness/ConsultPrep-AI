@@ -42,6 +42,19 @@ export default function IntakePreviewPage() {
           View information-state preview
         </Link>
       </section>
+
+      <section aria-labelledby="review-preview-title" className="mt-12 border-t border-line pt-8">
+        <h2 id="review-preview-title" className="text-xl font-semibold">Explore a synthetic review</h2>
+        <p className="mt-3 text-sm leading-6 text-muted">
+          The review preview uses a separate made-up example shaped to the merged brief contract. Your local drafts are not carried there and will be cleared when you leave this page.
+        </p>
+        <Link
+          href="/intake/review"
+          className="mt-5 inline-flex min-h-12 items-center rounded-lg border border-accent px-5 py-3 font-semibold text-accent hover:bg-preview focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        >
+          Preview synthetic patient review
+        </Link>
+      </section>
     </main>
   );
 }

@@ -1,6 +1,6 @@
 # Frontend defect log
 
-All repro data is synthetic. Status and retest results include the Phase 7 checks on the local Windows host.
+All repro data is synthetic. Status and retest results include the Phase 8 checks on the local Windows host.
 
 ## QA-001 — Standard Turbopack production build intermittently fails to start a loader worker
 
@@ -16,7 +16,7 @@ All repro data is synthetic. Status and retest results include the Phase 7 check
 | Owner | Member 3 frontend build/tooling investigation; suspected Next.js/Turbopack worker or local process environment, not assigned to Members 1 or 2. Upstream or Windows specificity is unconfirmed. |
 | Evidence | Phase 5 command outputs for `npm run build` and `npm run test:e2e` before the Webpack test-script change. The failure persisted outside sandbox and after replacing the Tailwind-only Turbopack loader. Webpack compiles the same TSX. |
 | Status | Open. No speculative framework downgrade or permanent Compiler disablement was retained. |
-| Retest result | Phase 6: three consecutive `npm run build` attempts outside the sandbox passed (3/3; 0 failures). Phase 7: three more consecutive outside-sandbox attempts passed (3/3; 0 failures); the prior loader-worker failure signature was not observed in this limited retest. Earlier same-host attempts failed intermittently, so QA-001 remains open. The first sandboxed Phase 7 Webpack browser-test build separately failed with `EPERM` creating `.next/server/app/_not-found.segments/_not-found`; the same command passed outside the sandbox (11/11 browser tests). |
+| Retest result | Phase 6: three consecutive `npm run build` attempts outside the sandbox passed (3/3; 0 failures). Phase 7: three more consecutive outside-sandbox attempts passed (3/3; 0 failures). Phase 8: three outside-sandbox standard builds passed (3/3; 0 failures), including a final build after the review UI changes; the original loader-worker failure did not recur. Earlier same-host attempts failed intermittently, so QA-001 remains open. The first sandboxed Phase 7 Webpack browser-test build separately failed with `EPERM` creating `.next/server/app/_not-found.segments/_not-found`; the same command passed outside the sandbox (11/11 browser tests). |
 
 ## QA-002 — Webpack build omitted Tailwind utility styling
 
@@ -41,3 +41,23 @@ No new application UI defect was found in the Phase 6 component or browser check
 ## Phase 7 defect review
 
 No new application UI defect was found in the five synthetic scenario tests or responsive Chromium checks. No application defect was closed. QA-001 remains open; QA-002 remains fixed and retains its browser styling regression check.
+
+## QA-003 — Provisional patient-turn parser changes original reported wording
+
+| Field | Record |
+|---|---|
+| Affected feature | Patient response request parsing and future source provenance. |
+| Environment | Merged `backend/api/contracts.ts` on the local Phase 8 branch; Node.js 24.18.1. No HTTP route or database was involved. |
+| Preconditions | A valid `reported` patient-turn request whose answer contains leading or trailing whitespace. |
+| Reproduction steps | Inspect `parsePatientTurnRequest` and run `node --test backend/api/api-contracts.test.ts`; its first test submits text with surrounding spaces and expects normalized text. |
+| Expected result | The validated answer retains the exact patient-entered text for the original statement/source record, or an agreed contract carries both raw and normalized values. |
+| Actual result | `parsePatientTurnRequest` returns `answer.text = text.trim()`. The test explicitly asserts the trimmed result. A future persistence path using this parsed value would lose the exact original wording. No persisted record was observed because no route exists. |
+| Severity / priority | Medium / P1 before connecting patient response persistence; provenance integrity risk, not a demonstrated live data-loss event. |
+| Owner | Member 2, with a shared raw-text contract decision with Member 1 and Member 3. |
+| Evidence | `backend/api/contracts.ts` reported-answer branch; passing backend contract test titled “accepts a valid patient response and normalizes surrounding whitespace”; Phase 8 source-traceability requirement. |
+| Status | Open. No Member 2 code was modified. |
+| Retest result | Not fixed or retested after a fix. Baseline backend suite passes 6/6 and confirms the current trimming behavior. |
+
+## Phase 8 defect review
+
+No new Member 3 UI defect was found in the new review tests. QA-003 is a Member 2 contract defect found during integration inspection; no live patient data was sent or changed. QA-001 remains open after a bounded 3/3 standard-build retest. The initial sandboxed Phase 8 Playwright server did not become reachable after a successful Webpack build; the outside-sandbox rerun passed all 15 Chromium tests. See [Phase 8 evidence](phase-8-patient-review-provenance.md).
