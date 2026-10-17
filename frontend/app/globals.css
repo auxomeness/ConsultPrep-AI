@@ -1,24 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f8f6;
+  --background: #ffffff;
   --surface: #ffffff;
+  --assistant-bubble: #ffffff;
+  --assistant-bubble-foreground: #173128;
+  --user-bubble: #245b3c;
+  --user-bubble-foreground: #ffffff;
   --field: #ffffff;
-  --foreground: #173128;
-  --muted: #435a50;
-  --line: #cbd9d0;
-  --accent: #0b624c;
-  --accent-hover: #084d3c;
+  --foreground: #17211b;
+  --muted: #4b5a51;
+  --line: #d9dfdb;
+  --accent: #397553;
+  --accent-hover: #316746;
   --accent-contrast: #ffffff;
-  --focus: #075f49;
-  --preview: #eaf5ee;
-  --preview-foreground: #1b4d39;
+  --focus: #286244;
+  --preview: #edf2ee;
+  --preview-foreground: #25422f;
   --error: #a12626;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-assistant-bubble: var(--assistant-bubble);
+  --color-assistant-bubble-foreground: var(--assistant-bubble-foreground);
+  --color-user-bubble: var(--user-bubble);
+  --color-user-bubble-foreground: var(--user-bubble-foreground);
   --color-field: var(--field);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
@@ -34,26 +42,62 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #101d17;
-    --surface: #182b21;
-    --field: #12231a;
-    --foreground: #f0f7f2;
-    --muted: #c5d5ca;
-    --line: #466552;
-    --accent: #a6e3c4;
-    --accent-hover: #c2efd7;
-    --accent-contrast: #10251a;
-    --focus: #b8efd2;
-    --preview: #223c2c;
-    --preview-foreground: #e1f5e7;
-    --error: #ffaaaa;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+.typing-dot {
+  animation: typing-bounce 900ms ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.intake-chat {
+  animation: intake-chat-enter 260ms ease-out both;
+}
+
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes intake-chat-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    opacity: 0.5;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot,
+  .intake-chat {
+    animation: none;
+  }
 }

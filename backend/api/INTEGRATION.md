@@ -2,19 +2,19 @@
 
 ## Status and evidence
 
-No Developer 1 AI service implementation, exported server function, route, package, structured output schema, safety event, or observed request/response example exists in this repository. `DEV1.md` is a requirements handoff only. No AMD credentials or service configuration are present. Therefore the actual Developer 1 service integration and success-response contract cannot yet be implemented or verified.
+The AI package and its structured contracts now exist in `packages/ai`. A synthetic-only Next.js demo route at `frontend/app/api/demo/intake/route.ts` calls the local Qwen service for intake turns, brief generation, and local confirmation. A real synthetic turn was exercised through the built route. No AMD request is made by this demo.
 
-This folder adds a **provisional application-side input contract** and safe error/timeout primitives. It does not define or impersonate the Developer 1 AI interface. There is no AI endpoint, provider URL, request builder, response parser, authentication bypass, or mock AI response in this change.
+The demo is not the production backend connection: it accepts client-held state and does not authenticate a patient, persist responses, enforce durable idempotency, or submit a case. The application-side contract and safe error/timeout primitives below remain the target for the authenticated Supabase-backed API. Do not use the demo route for real patient information.
 
 ## Current artifacts
 
-- `contracts.ts`: strict runtime validation for a proposed patient-turn request received by the application server. It accepts only the intake session, question identifier, stable idempotency key, and a reported/unknown/skipped answer. Owner, role, status, brief, and safety-routing fields are rejected. This input contract must be aligned with the eventual app route and intake schema.
+- `contracts.ts`: strict runtime validation for a proposed production patient-turn request. It accepts only the intake session, question identifier, stable idempotency key, and a reported/unknown/skipped answer. Owner, role, status, brief, and safety-routing fields are rejected. The demo route uses a separate request shape and validates its AI state with the AI package.
 - `errors.ts`: sanitized application error codes and HTTP status mappings. Unknown exceptions become a generic internal error; dependency messages and stack traces are not serialized. All current error bodies set `retryable: false` until provider idempotency behavior is known.
 - `dependencies.ts`: fail-closed helper that returns `AI_UNAVAILABLE` if an AI integration is not configured.
 - `timeout.ts`: bounds an external operation, aborts its signal, and returns a safe `AI_TIMEOUT` error. The provider adapter must honor the signal to stop the underlying request. No automatic retry is performed.
 - `api-contracts.test.ts`: tests invalid input, protected fields, unavailable dependency handling, sanitized errors, and timeout behavior.
 
-The application-facing turn request shape is:
+The proposed production application-facing turn request shape is:
 
 ```json
 {
@@ -45,15 +45,15 @@ For `unknown` and `skipped`, `answer.text` is omitted. These remain distinct sta
 
 Current mappings include invalid request (400), unauthenticated (401), forbidden (403), not found (404), invalid transition (409), unavailable AI/database (503), AI timeout (504), malformed AI output (502), persistence failure (500), and sanitized internal error (500). Messages intentionally avoid raw exceptions and sensitive request content.
 
-## Required route behavior after contracts are aligned
+## Required production route behavior
 
-The actual Next.js route is not created yet. Before implementing it, use the app's chosen route naming convention and enforce this order:
+The production Next.js route is not implemented yet. When it is, enforce this order:
 
 1. Parse the request with the accepted runtime schema; reject unknown/protected fields.
 2. Authenticate with Supabase Auth on the server and load the caller role from `profiles`.
 3. Fetch the session, verify patient ownership, and validate current status using the server-side guards in `backend/auth/authorization.ts`.
 4. Persist the original patient response before calling AI, or use a transaction/outbox strategy agreed by the team, so an AI timeout cannot lose the response.
-5. Invoke Developer 1's actual server-side interface with only the data required for that operation and a configured timeout.
+5. Invoke the AI package's server-side interface with only the data required for that operation and a configured timeout.
 6. Validate the actual response schema, including source references and safety-routing fields, before accepting it. Invalid or missing source references must not be represented as valid output.
 7. Return a typed success response only after the app validates the actual AI result. If AI is unavailable, return the safe dependency error and preserve the saved patient response.
 
@@ -76,4 +76,4 @@ Before connecting a provider, obtain the implemented code/import path and verify
 - API key/base URL/model configuration variable names and server-only handling;
 - synthetic examples and actual observed provider test results.
 
-The application success-response schema, provider adapter, route, and full integration tests remain blocked until this concrete handoff is available. No provider call was made and no external service was configured by this deliverable.
+The proposed production success-response schema, Supabase adapter, authenticated routes, and full integration tests remain unimplemented. The local demo route does not resolve those requirements.

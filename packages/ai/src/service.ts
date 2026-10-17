@@ -26,7 +26,7 @@ import { assessIntakeCompleteness } from "./completeness.js";
 
 export interface AiService {
   startIntake(): StartIntakeResult;
-  continueIntake(input: unknown): Promise<NextTurnResult | { safety: ReturnType<typeof assessSafety>; state: IntakeState }>;
+  continueIntake(input: unknown, signal?: AbortSignal): Promise<NextTurnResult | { safety: ReturnType<typeof assessSafety>; state: IntakeState }>;
   generateBrief(input: unknown): Promise<StructuredConsultationBrief>;
   answerQuestion(input: unknown): Promise<{ scope: "medical" | "system" | "out_of_scope"; answer: string }>;
 }
@@ -286,7 +286,7 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
       }
     },
 
-    async continueIntake(rawInput) {
+    async continueIntake(rawInput, signal) {
       const input = ContinueIntakeInputSchema.parse(rawInput);
       const state = validateIntakeState(input.state);
       if (state.completion === "completed") {
@@ -307,6 +307,15 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
         const fieldUpdates = mergeFieldUpdates(extracted, legacyContext);
         const updatedState = { ...state, fields: mergeFieldUpdates(state.fields, fieldUpdates) };
         const nextPlan = planNextQuestion(updatedState);
+        const completionWasAlreadyAsked = state.questionsAsked.some((question) => normalizeQuestion(question) === normalizeQuestion(COMPLETENESS_QUESTION));
+        if (!nextPlan && completionWasAlreadyAsked) {
+          return NextTurnResultSchema.parse({
+            assistantMessage: "Thanks, I’ve noted that. You can add anything else you’d like, or review the draft summary below.",
+            askedQuestion: null,
+            askedQuestionId: null,
+            fieldUpdates,
+          });
+        }
         const nextQuestion = nextPlan?.question ?? COMPLETENESS_QUESTION;
         return NextTurnResultSchema.parse({
           assistantMessage: `Understood. ${nextQuestion}`,
@@ -330,7 +339,7 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
       const allowedIds = new Set(state.responses.map((response) => response.id));
       let content: string;
       try {
-        content = await client.complete(messages, { maxTokens: 600 });
+        content = await client.complete(messages, { maxTokens: 600, ...(signal ? { signal } : {}) });
       } catch (error) {
         if (error instanceof AiServiceError && ["invalid_credentials", "rate_limited", "timeout", "provider_unavailable"].includes(error.code)) {
           return makeFallbackIntakeTurn(latest?.text ?? "", currentState, extractedFacts);
@@ -480,6 +489,15 @@ function normalizeNextTurn(output: unknown, allowedIds: Set<string>, state: Inta
     }
   }
   const selectedPlan = planNextQuestion(state);
+  const completionWasAlreadyAsked = state.questionsAsked.some((question) => normalizeQuestion(question) === normalizeQuestion(COMPLETENESS_QUESTION));
+  if (!selectedPlan && completionWasAlreadyAsked) {
+    return NextTurnResultSchema.parse({
+      assistantMessage: "Thanks, I’ve noted that. You can add anything else you’d like, or review the draft summary below.",
+      askedQuestion: null,
+      askedQuestionId: null,
+      fieldUpdates: extractedFacts.filter((field) => field.sourceResponseIds.every((id) => allowedIds.has(id))),
+    });
+  }
   const selectedQuestion = selectedPlan?.question ?? COMPLETENESS_QUESTION;
   const selectedQuestionId = selectedPlan?.questionId ?? "completion_check";
   const acknowledgement = extractAcknowledgement(assistantMessage);

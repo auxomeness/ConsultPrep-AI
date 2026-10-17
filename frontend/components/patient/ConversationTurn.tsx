@@ -9,19 +9,23 @@ type ConversationTurnProps = {
 
 export default function ConversationTurn({ label, text, kind, description }: ConversationTurnProps) {
   const labelId = useId();
+  const isResponse = kind === "response";
 
   return (
     <article
       aria-labelledby={labelId}
-      className={`rounded-xl border border-line p-5 sm:p-6 ${kind === "response" ? "bg-preview" : "bg-surface"}`}
+      className={`flex w-full items-start gap-3 ${isResponse ? "justify-end" : "justify-start"}`}
     >
-      <h3 id={labelId} className="text-sm font-semibold text-foreground">
-        {label}
-      </h3>
-      <p className="mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-base leading-7 text-foreground">
-        {text}
-      </p>
-      {description && <p className="mt-3 text-sm leading-6 text-muted">{description}</p>}
+      {!isResponse && (
+        <span aria-hidden="true" className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-contrast">C</span>
+      )}
+      <div className={`min-w-0 max-w-[min(88%,44rem)] ${isResponse ? "rounded-3xl bg-user-bubble px-5 py-3 text-user-bubble-foreground" : "text-assistant-bubble-foreground"}`}>
+        <h3 id={labelId} className="sr-only">{label}</h3>
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-lg leading-8">
+          {text}
+        </p>
+        {description && <p className="mt-2 text-sm leading-6 text-muted">{description}</p>}
+      </div>
     </article>
   );
 }

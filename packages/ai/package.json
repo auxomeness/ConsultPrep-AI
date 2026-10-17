@@ -3,12 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/src/workflow.d.ts",
+      "import": "./dist/src/workflow.js",
+      "default": "./dist/src/workflow.js"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit false --declaration false --outDir dist",
+    "build": "tsc --noEmit false --outDir dist",
     "test": "vitest run",
     "test:watch": "vitest",
     "embeddings:check": "npm run build && node dist/scripts/check-local-embeddings.js",
