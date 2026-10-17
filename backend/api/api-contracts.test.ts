@@ -4,6 +4,7 @@ import { parsePatientTurnRequest } from "./contracts.ts";
 import { requireConfiguredAiDependency } from "./dependencies.ts";
 import { ApiError, isApiErrorBody, toPublicError } from "./errors.ts";
 import { withAiTimeout } from "./timeout.ts";
+import { AuthorizationError } from "../auth/authorization.ts";
 
 const validRequest = {
   intakeSessionId: "10000000-0000-4000-8000-000000000001",
@@ -65,6 +66,13 @@ test("maps unknown dependency failures to a sanitized internal error", () => {
   assert.equal(response.status, 500);
   assert.equal(response.body.error.code, "INTERNAL_ERROR");
   assert.equal(response.body.error.message.includes("abc123"), false);
+});
+
+test("maps authorization guard failures to safe public authorization errors", () => {
+  const response = toPublicError(new AuthorizationError("NOT_FOUND", "Hidden case identifier", 404));
+  assert.equal(response.status, 404);
+  assert.equal(response.body.error.code, "NOT_FOUND");
+  assert.equal(response.body.error.message.includes("Hidden case"), false);
 });
 
 test("aborts and returns a safe timeout error without an automatic retry", async () => {

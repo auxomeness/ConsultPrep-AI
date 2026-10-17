@@ -222,12 +222,14 @@ export const clinicianRevisions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     caseId: uuid("case_id").notNull(),
+    revisionNumber: integer("revision_number").notNull(),
     clinicianId: uuid("clinician_id").notNull().references(() => profiles.id, { onDelete: "restrict" }),
     action: clinicianRevisionAction("action").notNull(),
     briefData: jsonb("brief_data").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique("clinician_revisions_case_number_unique").on(table.caseId, table.revisionNumber),
     index("clinician_revisions_case_created_idx").on(table.caseId, table.createdAt.desc()),
     foreignKey({
       name: "clinician_revisions_case_fk",
@@ -235,5 +237,6 @@ export const clinicianRevisions = pgTable(
       foreignColumns: [consultationCases.id],
     }).onDelete("restrict"),
     check("clinician_revisions_data_is_object", sql`jsonb_typeof(${table.briefData}) = 'object'`),
+    check("clinician_revisions_number_positive", sql`${table.revisionNumber} > 0`),
   ],
 );
