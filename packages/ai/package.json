@@ -1,0 +1,29 @@
+{
+  "name": "@consultprep/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit false --declaration false --outDir dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "embeddings:check": "npm run build && node dist/scripts/check-local-embeddings.js",
+    "demo:qa": "npm run build && node --env-file=.env dist/scripts/qa-once.js",
+    "chat:qa": "npm run build && node dist/scripts/interactive-chat.js",
+    "chat:intake": "npm run build && node dist/scripts/interactive-chat.js",
+    "smoke:amd": "npm run build && node --env-file=.env dist/scripts/amd-smoke.js"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}
