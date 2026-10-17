@@ -41,20 +41,21 @@ describe("IntakeConversation", () => {
 
   it("sends a patient answer to the server and renders its next AI turn", async () => {
     const user = userEvent.setup();
-    const nextState = { ...startState, concern: "Synthetic stomach discomfort", responses: [{ id: "response-1", text: "Synthetic stomach discomfort" }] };
+    const originalAnswer = "  Synthetic stomach discomfort  ";
+    const nextState = { ...startState, concern: originalAnswer, responses: [{ id: "response-1", text: originalAnswer }] };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ state: startState, assistantMessage: "What have you been feeling?" }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ state: nextState, assistantMessage: "When did it begin?", safety: false }) });
     vi.stubGlobal("fetch", fetchMock);
     render(<IntakeConversation />);
 
-    await user.type(screen.getByRole("textbox", { name: "Your answer" }), "Synthetic stomach discomfort");
+    await user.type(screen.getByRole("textbox", { name: "Your answer" }), originalAnswer);
     await user.click(screen.getByRole("button", { name: "Send answer" }));
 
     expect(await screen.findByText("When did it begin?")).toBeTruthy();
-    expect(screen.getByRole("article", { name: "Your response" }).textContent).toContain("Synthetic stomach discomfort");
+    expect(screen.getByRole("article", { name: "Your response" }).textContent).toContain(originalAnswer);
     const sentTurn = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as { operation: string; text: string; state: typeof startState };
-    expect(sentTurn).toMatchObject({ operation: "turn", text: "Synthetic stomach discomfort", state: startState });
+    expect(sentTurn).toMatchObject({ operation: "turn", text: originalAnswer, state: startState });
   });
 
   it("keeps the answer in the field and shows a safe error if the server fails", async () => {

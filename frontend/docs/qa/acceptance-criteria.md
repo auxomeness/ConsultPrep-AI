@@ -1,8 +1,44 @@
 # ConsultPrep AI — Proposed Acceptance Criteria
 
-Status: Phase 2 proposal, persisted for Phase 3 traceability. **No full integration criterion has passed.** Later frontend-only checks are recorded below. Member 1 now has a concrete v1.0 AI contract and library; the patient application still lacks Member 2 routes, persistence, authenticated review, and authoritative workflow operations. Use synthetic data only.
+Status: Phase 10 final frontend assessment (2026-10-18). The original criteria remain below for traceability; the Phase 4–9 sections are historical checkpoints. **No full patient or clinician application criterion is verified end to end.** The current `/api/demo/intake` route calls Member 1's AI service when configured, but this host lacks AMD credentials, and the demo has no Member 2 patient-record persistence or authenticated clinician workflow. Use synthetic data only.
 
 These criteria describe observable outcomes. The AI v1.0 schema and Member 2 provisional database/request shapes exist; final application API shapes, authorization, persistence behavior, and status transitions remain with the responsible members or shared contract.
+
+## Phase 10 authoritative classification
+
+Classification is based on this checkout's 22 passing frontend component tests, 17 passing Chromium tests against a Turbopack build, 137 passing Member 1 tests, 13 passing Member 2 pure tests, code inspection, and the local demo route's observed 503 without AMD configuration. Browser AI responses in the suite are intercepted fixtures. “Presentation only” never means persistence or live AI was verified.
+
+| Criteria | Classification | Evidence and remaining boundary |
+|---|---|---|
+| P01 | Blocked | “Begin intake” navigates to a development demo; no Member 2 session creation or acknowledged patient record. |
+| P02 | Partially verified | Empty/whitespace input stays unsent; failure preserves editable text. No authoritative response save or final shared validation rule. |
+| P03 | Partially verified | Typed answer remains editable; focused tests now preserve leading/trailing spaces in the demo request and displayed turn. Member 2's provisional parser still trims reported answers (QA-003). |
+| P04 | Partially verified | The demo sends a turn through `/api/demo/intake` and exposes pending/error UI; browser tests intercept responses. No idempotent persisted response acknowledgement. |
+| P05 | Partially verified | Member 1 follow-up behavior passes library tests; the browser displays a distinguishable mocked follow-up. No successful live AMD response on this host. |
+| P06 | Partially verified | A browser test sees a text status only while a request is pending and sees it disappear on resolution. Initial pre-state pending feedback is limited to the Stop control; no configured live AMD inference was observed. |
+| P07 | Partially verified | Mocked 503 and the unconfigured local demo route show failure handling; the original answer stays editable. Live AMD timeout/invalid-output behavior was not browser verified. |
+| P08 | Blocked | Not answered appears in synthetic presentations; no skip control records an authoritative answer. |
+| P09 | Blocked | Unknown appears in synthetic presentations; no uncertainty control records an authoritative answer. |
+| P10 | Verified — presentation only | Synthetic correction and original are both visible; no correction save. |
+| P11 | Verified — presentation only | Synthetic review and Member 1 brief-builder output expose source text; no retrieved patient brief or live inference result. |
+| P12 | Blocked | No persisted brief correction/version operation. |
+| P13 | Verified — presentation only | Mocked demo confirmation renders “Confirmed · Not submitted”; the separate review preview keeps confirmation disabled. No authoritative confirmation record. |
+| P14 | Blocked | No submission operation or acknowledged Submitted reference. |
+| P15 | Blocked | No persistence-backed failed-submission recovery. |
+| P16 | Blocked | No authoritative duplicate/uncertain-submission contract. |
+| C01 | Blocked | No authenticated clinician case list, empty state, or retrieval error UI. |
+| C02 | Blocked | No authorized case detail route or returned brief. |
+| C03 | Blocked | No authoritative case status loaded in a clinician UI. |
+| C04 | Blocked | Patient fixture sources open correctly, but no clinician source-linked case retrieval exists. |
+| C05 | Blocked | Patient fixture states remain distinct, but no clinician brief displays returned information states. |
+| C06 | Blocked | No clinician editor or unsaved-edit distinction in an authorized case. |
+| C07 | Blocked | No clinician revision save acknowledgement. |
+| C08 | Blocked | No clinician save failure/conflict UI. |
+| C09 | Blocked | No authorized finalization action or returned Finalized status. |
+| C10 | Blocked | Pure ownership/assignment guards pass Member 2 tests; no denied authenticated browser retrieval. |
+| C11 | Blocked | Pure finalization guard passes Member 2 tests; no denied browser finalization operation. |
+
+The demo route's answer parser and composer now preserve raw nonblank text. QA-003 remains open because Member 2's separate provisional parser still returns trimmed text. The Phase 10 handoff records the integration decision needed before connecting that parser to persistence.
 
 ## Phase 6 frontend-only evidence (2026-10-17)
 

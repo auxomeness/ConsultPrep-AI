@@ -301,7 +301,7 @@ export default function IntakeConversation() {
   async function submitAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft.trim() || busy || safetyStopped) return;
-    const answer = draft.trim();
+    const answer = draft;
     const controller = new AbortController();
     activeRequestControllerRef.current = controller;
     let activeState = state;

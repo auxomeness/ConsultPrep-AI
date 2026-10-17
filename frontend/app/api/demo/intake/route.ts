@@ -39,7 +39,7 @@ function parseRequest(value: unknown): DemoRequest | null {
 
   if (value.operation === "turn") {
     if (typeof value.text !== "string" || value.text.trim().length === 0 || value.text.length > 8_000) return null;
-    return { operation: "turn", state: parsedState.data, text: value.text.trim() };
+    return { operation: "turn", state: parsedState.data, text: value.text };
   }
   return value.operation === "brief"
     ? { operation: "brief", state: parsedState.data }

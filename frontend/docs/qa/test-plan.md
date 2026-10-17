@@ -1,6 +1,23 @@
-# Frontend test plan through Phase 9
+# Frontend test plan — Phase 10 handoff
 
-Status: automated checks for the **frontend development preview** through one synthetic follow-up, an information-state gallery, and a contract-shaped patient review preview. Phase 9 adds a one-time landing draft handoff, navigation, palette, and reduced-motion checks. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
+Status: current plan as of 2026-10-18. The Phase 6–9 records below are historical and describe the UI at those checkpoints; they must not be used as the current route inventory. All test inputs are synthetic. The present intake demo can call Member 1's AMD service through a Next route when configured, but browser tests intercept AI responses and no Member 2 patient record or clinician workflow is connected.
+
+## Current Phase 10 inventory and results
+
+| Level | Inventory | Final evidence and limit |
+|---|---|---|
+| Frontend component | 6 files, 22 tests: homepage, composer, conversation, information states, patient review, Member 1 brief-to-review compatibility. | 22/22 passed. Fetch in conversation tests is mocked; review route data is synthetic. |
+| Browser | 3 files, 17 Chromium tests: navigation, local validation, mocked pending/follow-up/failure/confirmation, pre-hydration safety, responsive homepage/intake/states/review, keyboard source disclosure. | 17/17 passed against a standard Turbopack production build. Route interception makes AI results fixtures. |
+| Member 1 | 14 AI package files, 137 tests plus typecheck. | 137/137 and typecheck passed. Contracts, safety, service, and brief library are exercised without a live AMD credential. |
+| Member 2 | `backend/api/api-contracts.test.ts` and `backend/auth/authorization.test.ts`, using `node --test`. | 13/13 passed. Pure parser/guard tests; no HTTP, auth session, database, or RLS execution. |
+
+Current commands: from `frontend`, run `npm run lint`, `npm run typecheck`, `npm run test:run`, `npm run test:e2e`, and `npm run build`; from `packages/ai`, run `npm run typecheck` and `npm test`; from repository root, run `node --test backend/api/api-contracts.test.ts backend/auth/authorization.test.ts` and `git diff --check`. `test:e2e` now runs the **standard Turbopack build** followed by a local production server on port 3217. If its build hits QA-001, record that failure before any retry. The Webpack comparison is optional and currently fails before styling can be assessed because native ONNX binaries in the merged AI package are not handled by that bundler path.
+
+Chromium coverage at 375, 768, and 1280px checks all four implemented routes for no horizontal overflow, visible controls, usable intake composer, state order, and review sources. A separate final visual pass inspected mobile screenshots of all four routes and desktop screenshots of home and review. The implemented routes each have one `<main>` and one `<h1>`. Browser tests cover keyboard navigation, focus outlines, source open/close, and a disabled pre-hydration send action. Selected contrast was tested historically; the current palette has not received a full contrast audit. No manual screen-reader or mobile assistive-technology test was performed; no WCAG claim is made.
+
+The live demo route returns a sanitized 503 on this host because `RADEON_API_KEY` and `RADEON_MODEL` are absent. A 503 is not a successful AMD interaction. The locally saved conversation snapshots are browser storage, not Member 2 persistence. `/intake/states` and `/intake/review` remain plainly labeled synthetic fixture routes; the latter is separate from the active intake. Mocked confirmation is not submission or clinician finalization. Member 2's provisional reported-answer parser still trims patient wording (QA-003), so persistence integration remains gated on a shared raw-text contract.
+
+## Historical Phase 6–9 plan and evidence
 
 ## Scope and environment
 
