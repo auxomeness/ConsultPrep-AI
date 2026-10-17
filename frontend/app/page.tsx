@@ -399,6 +399,7 @@ export default function Home() {
 
         <footer className="page-footer">
           <span>ConsultPrep AI</span>
+          <a className="clinician-demo-link" href="/clinician">Open clinician review demo</a>
           <span>AI documents. Clinicians decide.</span>
         </footer>
       </div>
