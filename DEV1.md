@@ -2,10 +2,13 @@ ConsultPrep AI — Developer 1 Complete Task Package
 Role: AI Engineering & AMD API Integration Engineer
 Primary ownership: AMD Token Factory API integration, AI conversation engine, structured intake generation, validation, safety guardrails, and integration handoff.
 Architecture decision: ConsultPrep AI will use the AMD Token Factory API directly for model inference. Evolus-specific implementation tasks are removed from this package unless the project owner later confirms that Evolus integration is required by the official hackathon rules.
+Additional project decision: Developer 1 also owns the retrieval-augmented generation (RAG) layer. RAG uses curated project-owned product guidance and synthetic examples with local embeddings; it is not a source of clinical knowledge. Live AMD inference is deferred until the complete offline implementation, tests, and handoff are ready. The initial live validation is limited to one synthetic request.
+Approved scope update (2026-10-17): In addition to intake and brief generation, Developer 1 will expose a separate domain-limited Q&A operation for general educational health questions and ConsultPrep system questions. Clearly unrelated questions are rejected before inference. Personal diagnosis, individualized risk assessment, and personal medication/treatment recommendations remain prohibited. The current medical Q&A path is not grounded in vetted clinical references; it is a prototype capability and must not be described as verified or deployment-ready.
 1. Role and responsibilities
 Developer 1 owns the AI integration layer that turns a patient's text conversation into structured, traceable, clinician-reviewable intake information.
 The goal is not merely to make a chatbot respond. The goal is to deliver a tested AI integration that the other two developers can connect to without guessing how it works.
 Developer 1 is responsible for:
+Curating project-owned RAG guidance and synthetic examples, and implementing local embedding and retrieval.
 Verifying AMD Token Factory API access, available models, authentication, and supported request formats.
 Selecting and testing an appropriate model for conversational intake and structured extraction.
 Implementing the server-side AMD API integration.
@@ -444,25 +447,17 @@ The model must never decide that a case is submitted or finalized. Those statuse
 
 6. Implementation sequence
 Follow these stages in order.
-Stage 1 — Discovery and access
-Inspect the existing repository.
-Read the current hackathon rules.
-Verify AMD Token Factory access and documentation.
-Identify available models and their intended capabilities.
-Confirm the API authentication mechanism.
-Identify unresolved requirements and blockers.
+Stage 1 — Repository and documentation discovery (offline)
+Inspect the existing repository and read the current hackathon rules.
+Verify official AMD documentation, endpoint, authentication, model catalog fields, and documented capabilities without sending inference requests.
+Identify unresolved requirements and classify each finding as documented, tested, assumed, or blocked.
 Verify whether direct Token Factory usage is permitted under the actual hackathon rules.
-Output: Discovery report and blocker list.
-Stage 2 — AMD inference proof of concept
-Implement a minimal request to the verified API.
-Test the selected model.
-Record the response and latency.
-Test a structured-output prompt.
-Validate a sample response.
-Test a failure case.
-Document reproducible setup instructions.
-Output: Working smoke test and observed results.
-Do not begin the full intake engine until the API connection is verified.
+Output: Documentation-based discovery report and blocker list. No live model call is made in this stage.
+Stage 2 — RAG knowledge corpus and local retrieval
+Curate project-owned guidance and synthetic examples.
+Implement Markdown section chunking, local embeddings, in-memory vector retrieval, and source metadata.
+Test retrieval and provenance offline using deterministic fixtures.
+Output: Local RAG pipeline; no clinical reference corpus or external vector database.
 Stage 3 — Structured intake contract
 Define the conceptual intake fields.
 Agree on status representations.
@@ -479,38 +474,28 @@ Test corrections and skipped questions.
 Test unknown, unclear, and contradictory answers.
 Verify that the model does not invent missing information.
 Output: Tested text-intake engine.
-Stage 5 — Brief generation
-Generate a consultation brief from the collected intake state.
-Validate the output.
-Verify source traceability.
-Test unsupported claims and incomplete information.
-Preserve the distinction between AI-generated drafts and clinician-finalized records.
-Output: Validated brief generation module.
-Stage 6 — Safety and failure handling
-Implement or coordinate the deterministic safety gate.
-Test potentially urgent synthetic scenarios.
-Test diagnosis and treatment requests.
-Test API timeouts and unavailable endpoints.
-Test malformed model output.
-Confirm that failures do not erase patient responses or create false success states.
-Output: Safety and reliability test report.
-Stage 7 — Application integration
-Deliver the stable server-side AI interface.
-Pair with Developer 2 to integrate the service.
-Verify request and response contracts.
-Test the actual patient conversation through the application.
-Verify that the application owns persistence and submission state.
-Output: Integrated patient-intake-to-brief workflow.
+Stage 5 — AMD client and safety/failure handling
+Implement the documented server-side request format, configuration validation, timeouts, normalized errors, and no automatic retries.
+Implement deterministic routing for the agreed synthetic urgent-symptom cases and the no-diagnosis/no-treatment prompt rules.
+Test urgent synthetic scenarios, malformed output, timeouts, invalid credentials, rate limits, and provider failures with offline fixtures and mocked transport.
+Confirm that failures preserve original patient responses and never create false submission or finalization states.
+Output: Safety and reliability implementation with offline test evidence.
+Stage 6 — Application integration and offline verification
+Deliver the stable server-side AI interface and verify request/response and source-reference contracts.
+Keep persistence, authorization, submission, and finalization in the application owned by Developer 2.
+Run package, type, RAG, schema, safety, and mocked-provider checks.
+Output: Offline-complete Developer 1 package ready for a single live smoke request.
+Stage 7 — One-request AMD smoke gate
+Only after the offline completion gate, send one synthetic structured-output request to the configured AMD model. Do not automatically retry or run broader live scenarios under the current usage limit.
+Record actual response, schema validation, latency, and any failure without exposing secrets.
+Output: One observed live smoke result. All other live-model behavior remains unverified unless the project owner later authorizes more calls.
 Stage 8 — Final handoff
-Review deliverables with the team.
-Run the agreed synthetic test suite.
-Document observed results.
-Identify incomplete work and unresolved issues.
-Demonstrate the AMD integration with verifiable evidence.
-Output: Reproducible handoff package.
+Review deliverables, test evidence, limitations, and unresolved hackathon questions.
+Output: Reproducible Developer 1 handoff package without unsupported claims of model evaluation or clinical safety.
 
 7. Acceptance criteria
 Developer 1's assignment is complete only when the following criteria have been verified.
+Under the current one-inference-request limit, the offline implementation and tests can be complete while model comparison and multi-scenario live evaluation remain explicitly unverified. Do not mark those live criteria as passed.
 AMD integration
 The actual API endpoint and authentication mechanism are verified.
 The selected model is available to the team's account.
@@ -570,9 +555,7 @@ Does the API support the structured-output behavior the application needs?
 What are the observed latency, error, and usage constraints?
 Does direct API usage satisfy the current hackathon's model-hosting requirements?
 What is the smallest experiment needed to verify each unresolved assumption?
-Then execute the AMD API smoke test.
-First milestone: Successfully call the verified AMD API, receive a response from the selected model, validate one synthetic structured intake object, and document the observed result.
-Only after that milestone is verified should you proceed with the complete conversation engine.
+First complete the RAG, conversation, schema, brief, safety, failure, mocked-test, and documentation work without inference calls. Then run exactly one synthetic AMD smoke request after the offline completion gate. A successful smoke is evidence of endpoint access and one structured response only; it is not model comparison or live safety validation.
 
 10. Developer 1 execution checklist
 Phase 1 — Access and discovery
@@ -655,14 +638,5 @@ Failure and safety behavior working as documented.
 Any separate hackathon infrastructure or platform requirement must be demonstrated independently and must not be represented as satisfied by the AMD API integration alone.
 
 12. Recommended first milestone
-Keep the first milestone small and verifiable:
-Successfully call the actual AMD Token Factory API.
-Confirm the selected model's identity and availability.
-Generate a response to a synthetic patient-intake prompt.
-Produce one structured intake object.
-Validate that object against a runtime schema.
-Record the actual result and setup instructions.
-Confirm whether the selected direct-API architecture satisfies the event rules.
-Do not start by implementing every intake feature, writing the complete application, or building infrastructure that has not been verified.
-The immediate objective is a working, documented, testable AMD AI integration—not a fully developed chatbot.
+Complete a fully testable offline AI package: local project-guidance RAG, versioned intake/brief schemas, conversation and brief-generation service, AMD client, deterministic synthetic safety routing, mocked failure tests, and handoff documentation. After that completion gate, make one synthetic AMD inference request and validate the structured response. Document all untested model-level acceptance criteria and hackathon questions as unresolved. Do not use real patient information or place API credentials in tracked files.
 

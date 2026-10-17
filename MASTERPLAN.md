@@ -7,15 +7,18 @@ Primary Users: Patients and healthcare professionals
 AI Inference Provider: AMD Token Factory API
 Database: PostgreSQL hosted on Supabase
 Development Context: AMD AI hackathon; final track eligibility must be verified
-ConsultPrep AI is an AI-powered pre-consultation intake platform that helps patients communicate their health concerns clearly before speaking with a healthcare professional.
+ConsultPrep AI is an AI-powered pre-consultation intake platform that helps patients communicate their health concerns clearly before speaking with a healthcare professional. It also has a domain-limited Q&A mode for general educational health information and questions about ConsultPrep itself; it is not a general-purpose assistant.
 Patients interact with an AI assistant through a familiar, text-based chat interface. Instead of requiring them to complete a long, complicated medical form, the assistant guides them through a structured conversation, asking relevant follow-up questions one at a time.
 After collecting the patient's responses, the system organizes the information into a structured pre-consultation brief that a healthcare professional can review, correct, and finalize.
 The system is designed to improve the organization and completeness of patient-reported information, not to make medical decisions.
 Core principle: AI documents. Clinicians decide.
 ConsultPrep AI must never present itself as a doctor, diagnose medical conditions, prescribe medication, recommend treatments, or replace professional medical judgment.
+General health Q&A is not currently grounded in a vetted clinical reference corpus and is an unverified prototype capability, not a deployment-ready patient service.
 The initial prototype will use synthetic patient data and will be demonstrated as a proof of concept rather than a clinically validated medical product.
 Current technology direction
 The project will use the AMD Token Factory API directly for AI inference. The application will call the verified AMD endpoint from server-side application code.
+Developer 1 also owns a local RAG layer over curated project-owned product guidance and synthetic examples. Initial retrieval embeddings are generated locally; this corpus is not a source of clinical knowledge and patient-evidence references remain linked to original response IDs.
+Live AMD inference is deferred until Developer 1's offline implementation, tests, and handoff are complete. The initial live validation is one synthetic structured-output request; broader model behavior is reported as unverified unless additional calls are approved.
 Evolus Business Agents will not be part of the initial architecture unless the project owner explicitly changes this decision.
 The exact model, endpoint, authentication mechanism, and request format must be verified against the actual AMD Token Factory service before implementation. Do not assume that access to a model catalog automatically establishes eligibility for a particular hackathon track.
 2. The Problem
@@ -650,8 +653,7 @@ No secrets or real patient information are committed.
 The demonstration does not claim diagnosis, clinical validation, or unmeasured outcomes.
 Applicable hackathon requirements have been checked.
 21. Product Differentiation
-ConsultPrep AI is not intended to compete with general-purpose AI chatbots by answering more questions.
-Its value lies in transforming an unstructured patient conversation into a structured, traceable, clinician-reviewable intake document.
+ConsultPrep AI is not intended to answer arbitrary topics like a general-purpose chatbot. Its value lies in health-domain assistance and transforming an unstructured patient conversation into a structured, traceable, clinician-reviewable intake document.
 The distinguishing capabilities are:
 Adaptive intake rather than a static, lengthy form.
 Structured output rather than a conversation transcript alone.

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 "use client";
 
 import { useState, type FormEvent } from "react";
@@ -405,4 +406,10 @@ export default function Home() {
       </div>
     </main>
   );
+=======
+import ProductIntroduction from "@/components/patient/ProductIntroduction";
+
+export default function Home() {
+  return <ProductIntroduction />;
+>>>>>>> 4dbf67034c24251e0552d9a76b7cbd3d49f1d0af
 }

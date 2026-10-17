@@ -2,7 +2,7 @@
 
 **AI documents. Clinicians decide.**
 
-ConsultPrep AI is an AI-powered pre-consultation intake assistant that helps patients organize their concerns before a medical consultation. It transforms patient-reported information into a structured, source-linked consultation brief that clinicians can review, correct, and finalize.
+ConsultPrep AI is an AI-powered pre-consultation intake assistant with a domain-limited Q&A mode for general educational health questions and questions about ConsultPrep. It helps patients organize their concerns into a structured, source-linked consultation brief that clinicians can review, correct, and finalize.
 
 Instead of replacing medical professionals, ConsultPrep AI aims to make pre-consultation information gathering more organized, consistent, and traceable.
 
@@ -19,6 +19,8 @@ The system organizes their responses into a structured brief while preserving li
 ## Key Features
 
 - **Adaptive patient intake** — Asks relevant follow-up questions based on information already provided.
+- **Domain-limited Q&A** — Handles general educational health questions and ConsultPrep system questions while declining clearly unrelated topics and personal diagnosis/treatment requests. Medical answers are not yet grounded in a vetted clinical reference corpus.
+- **Project-guidance retrieval** — Uses locally generated embeddings to retrieve approved project guidance and synthetic examples for the AI workflow; it is not a clinical knowledge base.
 - **Structured consultation briefs** — Organizes patient responses into a consistent, readable format.
 - **Source traceability** — Links relevant brief entries to the original patient statements.
 - **Patient review and correction** — Allows patients to review their information before submitting it.
@@ -38,6 +40,10 @@ The system organizes their responses into a structured brief while preserving li
 7. **Clinician review.** A clinician examines the brief and its supporting statements, makes any necessary edits, and explicitly finalizes it.
 
 Potentially urgent symptoms must not be held up by routine intake or completion requirements.
+
+## AI Integration Status
+
+The current frontend intake page is a non-persistent preview. The AI package is ready to be called from a Node.js backend, and the intake path currently uses the local model only. Backend routes, authenticated session storage, and frontend-to-backend integration are not implemented yet. See the [frontend/backend AI integration guide](packages/ai/docs/frontend-backend-integration.md) for the proposed HTTP contract, server setup, state lifecycle, and verification steps.
 
 ## Consultation Brief Structure
 
@@ -62,7 +68,7 @@ The intended technology stack includes:
 |---|---|
 | Frontend and application | Next.js, React, TypeScript |
 | Styling and components | Tailwind CSS, shadcn/ui |
-| AI inference | AMD Token Factory API |
+| AI inference | Local Qwen3-0.6B for the current intake; AMD client is not used by the intake flow |
 | Database | Supabase-hosted PostgreSQL |
 | Database access | Drizzle ORM, subject to existing project conventions |
 | Runtime validation | Zod |
@@ -70,7 +76,9 @@ The intended technology stack includes:
 | Testing | Vitest, React Testing Library, Playwright |
 | Version control | Git and GitHub |
 
-**Note:** The exact AMD Token Factory model, endpoint, authentication method, and request/response format must be verified against the selected service before implementation. The table describes the intended architecture, not a claim that every component is already implemented.
+**Note:** AMD Token Factory support remains a separate, unverified capability. The current interactive intake uses local inference only and does not send AMD requests. The table describes the current intake provider and planned stack, not a claim that every component is already implemented.
+
+Developer 1's AI package uses local embeddings for project-guidance retrieval. The current intake path is local-only; do not run AMD inference until explicitly approved.
 
 ## Architecture Principles
 
