@@ -1,10 +1,10 @@
-# Phase 5 frontend test plan
+# Phase 6 frontend test plan
 
-Status: automated baseline for the Phase 4 **frontend development preview**. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
+Status: automated checks for the **frontend development preview** through one synthetic follow-up. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
 
 ## Scope and environment
 
-- Routes: `/` introduction and `/intake` initial-concern UI preview only.
+- Routes: `/` introduction and `/intake` initial concern → exact local response presentation → one fixed synthetic question → second local draft.
 - Host used for this verification: Windows, Node.js 24.18.1, npm 11.16.0.
 - Application: Next.js 16.4.2 App Router, React 19.3.0, strict TypeScript, Tailwind CSS 4.
 - Component runner: Vitest 4.1.11, jsdom, React Testing Library, DOM Testing Library, and user-event.
@@ -36,23 +36,29 @@ Run the browser suite without another Next dev/build process using the same `.ne
 | Component | Whitespace-only concern is rejected without erasing typed spaces. | P02 frontend portion. |
 | Component | Valid synthetic text produces local-only feedback, with no saved, submitted, or AI-processed claim. | P02/P03 frontend portions. |
 | Component | Introduction states product principle and limits; preview link targets `/intake` and does not imply a created record. | Introduction presentation. |
+| Component | The exact locally checked concern, including whitespace and line breaks, appears in a distinct patient turn before one fixed question. The turn has no authoritative status. | P03 frontend portion; synthetic presentation only for P05. |
+| Component | The question is labeled synthetic and explicitly states that neither AI nor a clinician authored it. | Fixture provenance presentation; P05 remains blocked. |
+| Component | Second field has an accessible name, accepts edits, and keeps its local draft after the first concern is rechecked. | P03 frontend portion. |
 | Browser | Navigate `/` → `/intake` → `/`; check headings and preview limitations. | Route and truthfulness smoke. |
 | Browser | Validate empty/whitespace/valid text, retained value, focus, error association, keyboard activation, and no non-GET request after local checks. | P02/P03 frontend portions. |
 | Browser | With JavaScript disabled, the local-check button does not submit text into a query string. | Regression for the observed pre-hydration form defect. |
-| Browser | At 375, 768, and 1280px, both pages avoid horizontal overflow, controls remain visible, focus is visible, and Tailwind utility styling is present. | Responsive/focus and Webpack styling regression. |
+| Browser | Exact response text, three conversation turn labels/order, synthetic provenance, keyboard Tab to the second field, editable second draft, and no non-GET request or fake status. | Real browser presentation and keyboard behavior, not integration. |
+| Browser | At 375, 768, and 1280px, the expanded conversation avoids horizontal overflow (including an unbroken word), second field remains usable, turn order is correct, focus is visible, and Tailwind utility styling is present. | Responsive/focus and Webpack styling regression. |
 
 No screenshot comparison is used. Semantic role and label queries are preferred. These checks are targeted accessibility evidence, **not a WCAG compliance claim**.
 
 ## Synthetic fixtures and manual checks
 
-The component and browser tests type only invented phrases such as “A synthetic concern” and “I would like to discuss a made-up concern.” Empty and whitespace strings exercise validation. No real patient information is used.
+The component and browser tests type only invented phrases such as “A synthetic concern” and “I would like to discuss a made-up concern.” Empty and whitespace strings exercise validation. The fixed question is “When did this concern begin, and has it changed since then?” No real patient information is used.
 
-Phase 4 included manual browser inspection of the styled introduction and intake preview at the three representative widths. Phase 5 adds automated browser checks for those widths. A later integrated workflow still needs manual usability and screen-reader review.
+Phase 4 included manual browser inspection of the styled introduction and intake preview at the three representative widths. Phase 6 extends automated browser checks for the expanded sequence at those widths. A later integrated workflow still needs manual usability and screen-reader review.
 
 ## Acceptance evidence and limits
 
 - **P02 frontend portion:** component and browser tests verify local rejection, clear error association, preserved text, focus, no non-GET request during the local check, and no query-string submission with JavaScript disabled. Shared final validation rules and real persistence behavior remain unverified.
-- **P03 frontend portion:** component and browser tests verify visible, editable local text. A persisted response is not tested.
+- **P03 frontend portion:** component and browser tests verify visible, editable local text, exact wording in the conversation preview, and an editable second local draft. A persisted response is not tested.
+- **P05:** blocked by Member 1. Only synthetic follow-up presentation is verified; no AI result exists.
+- **P06:** blocked/not evaluated. No inference request or real AI loading state exists.
 - **Full P02/P03 integration:** not passed. No session or response service is connected.
 
 These tests do **not** verify AI integration, backend persistence, authentication, authorization, submission, consultation briefs, clinician workflows, or Member 1/Member 2 contracts. No fixture is presented as a real server or AI response.
@@ -64,6 +70,6 @@ These tests do **not** verify AI integration, backend persistence, authenticatio
 - On this host, sandboxed package downloads and some subprocess/temp-file operations can fail; approved execution outside the sandbox was used when the same command failed there.
 - The latest local `npm audit --omit=dev` reported zero production-dependency advisories. The full audit still reports five high advisories in the existing ESLint/Next development-tool chain; no incompatible forced dependency change was applied.
 
-## Latest Phase 5 run (2026-10-17)
+## Phase 6 run (2026-10-17)
 
-`npm run lint`, `npm run typecheck`, and `npm run test:run` passed (5 component tests). `npm run test:e2e` passed (6 Chromium tests, including a styled Webpack build). `git diff --check` passed with Git line-ending warnings. The final `npm run build` Turbopack attempt passed, but earlier same-host attempts failed as recorded in QA-001; repeatability is not established. The production-only npm advisory check found zero findings; the full audit found five high development-tool advisories and no critical findings.
+`npm run lint` and `npm run typecheck` passed. `npm run test:run` passed (7 component tests). `npm run test:e2e` passed (7 Chromium tests, including a styled Webpack build) when rerun outside the sandbox; the first sandboxed build stopped on an `EPERM` directory creation error during prerendering. Three consecutive standard Turbopack builds outside the sandbox passed. QA-001 stays open because earlier same-host runs failed intermittently; this limited run does not establish long-term reliability. See [Phase 6 patient interaction evidence](phase-6-patient-interaction-preview.md) for observed details.

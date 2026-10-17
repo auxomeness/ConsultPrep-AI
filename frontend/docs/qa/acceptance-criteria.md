@@ -1,8 +1,19 @@
 # ConsultPrep AI — Proposed Acceptance Criteria
 
-Status: Phase 2 proposal, persisted for Phase 3 traceability. **No criterion has been executed or passed.** The repository currently contains no ConsultPrep patient or clinician workflow. Integration criteria are blocked until Members 1 and 2 deliver the corresponding contracts and runnable services. Use synthetic data only.
+Status: Phase 2 proposal, persisted for Phase 3 traceability. **No full integration criterion has passed.** Later frontend-only checks are recorded below. Integration criteria are blocked until Members 1 and 2 deliver the corresponding contracts and runnable services. Use synthetic data only.
 
 These criteria describe observable outcomes. Final API shapes, authorization rules, persistence behavior, AI behavior, and case status values remain with the responsible members or shared contract.
+
+## Phase 6 frontend-only evidence (2026-10-17)
+
+| Criterion | Evidence | Full criterion |
+|---|---|---|
+| P02 | Verified local empty/whitespace rejection, linked error, focus, preserved input, and no request from the local check in component/Chromium tests. | Blocked by Member 2 persistence and shared final validation rules. |
+| P03 | Verified first and second local drafts remain editable; exact locally checked first response appears in the preview. | Integrated question/response association and persistence remain blocked by Members 1 and 2. |
+| P05 | A fixed **synthetic follow-up presentation prototype** was verified with explicit fixture provenance. This is UI evidence only. | Blocked by Member 1; no saved response or valid AI result was tested. |
+| P06 | No loading UI was simulated or evaluated. | Blocked/not evaluated; no AI request or pending signal exists. |
+
+See [Phase 6 patient interaction evidence](phase-6-patient-interaction-preview.md) and the [test plan](test-plan.md). All other criteria remain unpassed.
 
 ## Patient criteria
 

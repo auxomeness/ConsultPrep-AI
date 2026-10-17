@@ -1,6 +1,6 @@
 # Frontend defect log
 
-All repro data is synthetic. Status and retest results reflect the Phase 5 checks on the local Windows host.
+All repro data is synthetic. Status and retest results include the Phase 6 checks on the local Windows host.
 
 ## QA-001 — Standard Turbopack production build intermittently fails to start a loader worker
 
@@ -16,7 +16,7 @@ All repro data is synthetic. Status and retest results reflect the Phase 5 check
 | Owner | Member 3 frontend build/tooling investigation; suspected Next.js/Turbopack worker or local process environment, not assigned to Members 1 or 2. Upstream or Windows specificity is unconfirmed. |
 | Evidence | Phase 5 command outputs for `npm run build` and `npm run test:e2e` before the Webpack test-script change. The failure persisted outside sandbox and after replacing the Tailwind-only Turbopack loader. Webpack compiles the same TSX. |
 | Status | Open. No speculative framework downgrade or permanent Compiler disablement was retained. |
-| Retest result | Not resolved. The final `npm run build` with React Compiler enabled passed, but multiple earlier same-host runs failed in the React Compiler or PostCSS worker. Webpack remains the deterministic browser-QA path. |
+| Retest result | Phase 6: three consecutive `npm run build` attempts outside the sandbox passed (3/3; 0 failures); the previous failure signature was not observed in this limited retest. Earlier same-host attempts failed intermittently with the loader worker signature above, so repeatability is not established and QA-001 remains open. The first sandboxed Webpack build for browser tests separately failed with `EPERM` creating `.next/server/app/_not-found.segments/_not-found`; the same test command passed outside the sandbox (7/7 browser tests). |
 
 ## QA-002 — Webpack build omitted Tailwind utility styling
 
@@ -33,3 +33,7 @@ All repro data is synthetic. Status and retest results reflect the Phase 5 check
 | Evidence | Original package/config inspection and Phase 4 browser observation; Tailwind's official Next.js setup specifies `@tailwindcss/postcss`. |
 | Status | Fixed by adding `postcss.config.mjs` and `@tailwindcss/postcss`, then removing the Turbopack-only Tailwind loader. Tailwind 4 remains the styling system. |
 | Retest result | `npm run build -- --webpack` passed and emitted CSS containing `bg-accent` and `max-w-6xl`; the Playwright browser suite checks the CTA's computed background. |
+
+## Phase 6 defect review
+
+No new application UI defect was found in the Phase 6 component or browser checks. No application defect was closed. QA-001 remains open; QA-002 remains fixed and is covered by the browser styling regression check.

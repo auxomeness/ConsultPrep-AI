@@ -1,5 +1,5 @@
 import Link from "next/link";
-import ResponseComposer from "@/components/patient/ResponseComposer";
+import IntakeConversation from "@/components/patient/IntakeConversation";
 
 export default function IntakePreviewPage() {
   return (
@@ -15,7 +15,7 @@ export default function IntakePreviewPage() {
       </nav>
 
       <div className="mt-9 rounded-xl border border-line bg-preview px-5 py-4 text-sm leading-6 text-preview-foreground" role="note">
-        <strong>Frontend development preview.</strong> Use made-up information only. No session is created, and nothing you type is saved or sent.
+        <strong>Frontend development preview.</strong> Use made-up information only. No patient session is created, nothing is saved or submitted, no AI service is called, and no clinician receives this information.
       </div>
 
       <header className="mt-10">
@@ -24,23 +24,11 @@ export default function IntakePreviewPage() {
           Describe your main concern
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-          This page demonstrates the first question and local field validation. The full intake conversation is not connected yet.
+          Check an initial concern locally, then explore how your exact wording and one synthetic follow-up would appear in a conversation.
         </p>
       </header>
 
-      <section aria-labelledby="prompt-title" className="mt-10">
-        <div className="mb-5 border-l-4 border-accent pl-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Synthetic initial prompt</p>
-          <h2 id="prompt-title" className="mt-2 text-xl font-semibold leading-8">
-            What would you like to discuss with a healthcare professional?
-          </h2>
-        </div>
-        <ResponseComposer />
-      </section>
-
-      <p className="mt-8 text-sm leading-6 text-muted">
-        Response saving, AI follow-up questions, review, and submission are unavailable in this preview.
-      </p>
+      <IntakeConversation />
     </main>
   );
 }

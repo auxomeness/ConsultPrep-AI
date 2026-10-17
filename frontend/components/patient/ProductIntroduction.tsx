@@ -37,10 +37,10 @@ export default function ProductIntroduction() {
             Development preview
           </p>
           <h2 id="preview-title" className="mt-5 text-2xl font-semibold tracking-tight">
-            Try the first step
+            Try the conversation preview
           </h2>
           <p className="mt-3 leading-7 text-muted">
-            Explore the initial concern field and its local validation using made-up information.
+            Explore an initial concern, local validation, and one synthetic follow-up using made-up information.
           </p>
           <ul className="mt-6 space-y-3 border-t border-line pt-6 text-sm leading-6 text-foreground">
             <li>No information is saved or sent.</li>
