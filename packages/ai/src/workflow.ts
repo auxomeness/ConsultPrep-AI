@@ -1,5 +1,87 @@
-import type { IntakeState } from "./contracts.js";
+import type { IntakeField, IntakeState, NextTurnResult, QuestionHistoryEntry } from "./contracts.js";
 import { extractPatientFacts, mergeFieldUpdates } from "./intake-facts.js";
+import { QUESTION_BANK } from "./question-bank.js";
+
+/** Add one patient answer and locally extracted facts to an intake state. */
+export function recordPatientAnswer(state: IntakeState, text: string): { state: IntakeState; responseId: string } {
+  const responseId = `response-${state.responses.length + 1}`;
+  const activeQuestionId = state.activeQuestionId;
+  const activeQuestion = state.questionsAsked.at(-1) ?? "";
+  const response = {
+    id: responseId,
+    text,
+    sequence: state.responses.length,
+    ...(activeQuestion ? { questionId: activeQuestion } : {}),
+    ...(activeQuestionId ? { questionBankId: activeQuestionId } : {}),
+    createdAt: new Date().toISOString(),
+  };
+  const updates = extractPatientFacts(response, activeQuestion, activeQuestionId);
+  const fields = mergeFieldUpdates(state.fields, updates);
+  const questionHistory = activeQuestionId
+    ? markQuestionAnswered(state.questionHistory ?? [], activeQuestionId, responseId, updates, text)
+    : state.questionHistory;
+  return {
+    responseId,
+    state: {
+      ...state,
+      concern: state.concern || text,
+      responses: [...state.responses, response],
+      fields,
+      ...(questionHistory ? { questionHistory } : {}),
+    },
+  };
+}
+
+/** Apply the AI service's validated turn delta without replacing patient evidence. */
+export function applyIntakeTurn(state: IntakeState, result: Pick<NextTurnResult, "fieldUpdates" | "askedQuestion" | "askedQuestionId">): IntakeState {
+  const fields = new Map(state.fields.map((field) => [field.fieldId, field]));
+  for (const field of result.fieldUpdates) fields.set(field.fieldId, field);
+  const questionId = result.askedQuestionId ?? "completion_check";
+  const alreadyLogged = (state.questionHistory ?? []).some((entry) => entry.questionId === questionId && entry.status === "asked");
+  const questionHistory = alreadyLogged ? state.questionHistory : [...(state.questionHistory ?? []), {
+    questionId,
+    targetField: QUESTION_BANK.find((item) => item.id === questionId)?.targetField ?? questionId,
+    status: "asked" as const,
+    sourceResponseIds: [],
+  }];
+  return {
+    ...state,
+    fields: [...fields.values()],
+    activeQuestionId: questionId,
+    questionHistory,
+    questionsAsked: result.askedQuestion && !state.questionsAsked.some((question) => normalize(question) === normalize(result.askedQuestion!))
+      ? [...state.questionsAsked, result.askedQuestion]
+      : state.questionsAsked,
+  };
+}
+
+function markQuestionAnswered(
+  history: QuestionHistoryEntry[],
+  questionId: string,
+  responseId: string,
+  updates: IntakeField[],
+  responseText: string,
+): QuestionHistoryEntry[] {
+  const target = questionId === "main_concern" ? "primary_concern"
+    : QUESTION_BANK.find((question) => question.id === questionId)?.targetField
+      ?? (questionId.startsWith("symptom_onset__") ? "symptom_onset" : questionId);
+  const fact = updates.find((field) => field.fieldId === target || (target === "symptom_onset" && field.fieldId.startsWith("symptom_onset_")));
+  const status: QuestionHistoryEntry["status"] = fact?.status === "declined" ? "declined"
+    : fact?.status === "unclear" ? "requires_clarification"
+      : fact?.status === "unknown" || fact?.status === "patient_denied" || fact?.status === "reported" || fact?.status === "patient_corrected" ? "answered"
+        : history.at(-1)?.questionId === questionId && ["requires_clarification", "partially_answered"].includes(history.at(-1)?.status ?? "") ? "answered"
+          : responseText.trim().length < 3 ? "partially_answered" : "requires_clarification";
+  const next = [...history];
+  const index = next.map((entry) => entry.questionId).lastIndexOf(questionId);
+  const entry: QuestionHistoryEntry = { questionId, targetField: target, status, sourceResponseIds: [responseId] };
+  if (index >= 0) next[index] = entry;
+  else next.push(entry);
+  return next;
+}
+
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
 
 export function recordPatientCorrection(state: IntakeState, text: string): IntakeState {
   const timelineCorrection = /\b(started|began|onset|yesterday|today|last night|this morning|when i woke up)\b/i.test(text);

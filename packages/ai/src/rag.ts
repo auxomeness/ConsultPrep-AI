@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { pipeline } from "@huggingface/transformers";
 import { AiServiceError } from "./errors.js";
 
@@ -97,9 +98,10 @@ export async function loadKnowledgeSources(directory: string): Promise<Knowledge
 }
 
 export async function createDefaultRetriever(embed: Embedder = createLocalEmbedder()): Promise<InMemoryRetriever> {
+  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    new URL("../knowledge/", import.meta.url).pathname,
-    new URL("../../knowledge/", import.meta.url).pathname,
+    resolve(moduleDirectory, "../knowledge"),
+    resolve(moduleDirectory, "../../knowledge"),
   ];
   for (const directory of candidates) {
     try {

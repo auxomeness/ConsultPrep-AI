@@ -1,14 +1,15 @@
 # Frontend and backend integration guide
 
-This guide describes how to connect the existing AI package to the ConsultPrep frontend through a server-side API. It is an integration plan and contract, not a claim that these API routes already exist.
+This guide records the current synthetic demo integration and the remaining production connection work.
 
 ## Current status
 
-- `frontend/app/intake/page.tsx` is a preview. It does not create a session or call an API.
-- There are no implemented `/api/intake/*` backend routes or persistent intake sessions yet.
-- `packages/ai` provides the AI service and versioned Zod contracts, but it does not provide HTTP routes, authentication, database persistence, or a complete server-side turn/session coordinator.
-- Intake should use `LocalQwenChatClient` as the only generation provider for now. That path makes no AMD request. Local model files may download on first use and inference runs on the server CPU.
-- `createDefaultRetriever()` also loads local MiniLM embeddings and the project-owned Markdown corpus. Retrieval is for ConsultPrep system questions; it is not a clinical knowledge base.
+- `frontend/app/intake/page.tsx` and `IntakeConversation.tsx` expose a synthetic local-AI demo.
+- `frontend/app/api/demo/intake/route.ts` calls the real `packages/ai` service for start, turn, brief, and local confirmation. A synthetic turn has been exercised successfully through the built route.
+- Demo state remains in browser memory and is sent to the route with each request. There is no authentication, session ownership check, database persistence, durable idempotency, or clinician submission. The route is only for synthetic development.
+- The demo uses `LocalQwenChatClient` and makes no AMD request. Local model files may download on first use and inference runs on the server CPU.
+- Intake does not use RAG; the route supplies an empty retriever. Project-guidance RAG remains for ConsultPrep system questions and is not a clinical knowledge base.
+- The authenticated Supabase session API and server-owned state coordinator for production remain unimplemented.
 
 ## Ownership
 
@@ -20,22 +21,20 @@ This guide describes how to connect the existing AI package to the ConsultPrep f
 
 The backend is the only layer that imports and calls `@consultprep/ai`. The frontend calls the backend over HTTP. Do not import the AI package into a browser component.
 
-## Recommended request flow
+## Current demo request flow
 
 ```text
 Browser UI
-  ├─ POST /api/intakes                 start and store a session
-  ├─ POST /api/intakes/:id/messages    append a patient answer and get one turn
-  ├─ POST /api/intakes/:id/brief       create a source-linked draft
-  └─ POST /api/intakes/:id/confirm     record patient confirmation
+  ├─ POST /api/demo/intake { operation: "start" }
+  ├─ POST /api/demo/intake { operation: "turn", state, text }
+  ├─ POST /api/demo/intake { operation: "brief", state }
+  └─ POST /api/demo/intake { operation: "confirm", state }
                          │
                          ▼
 Next.js server route / backend service
-  ├─ authenticate and authorize
-  ├─ load and update the server-owned intake state
-  ├─ call the AI service with validated data
-  ├─ persist the updated state and audit data
-  └─ return a small UI-safe response
+  ├─ validate request and AI state
+  ├─ call the local AI service
+  └─ return a UI-safe response (demo only; no persistence)
                          │
                          ▼
 @consultprep/ai (Node.js runtime)
@@ -44,13 +43,13 @@ Next.js server route / backend service
   └─ contracts, validation, safety rules, structured brief
 ```
 
-Use the existing Next.js App Router. Suggested route files are `frontend/app/api/intakes/route.ts`, `frontend/app/api/intakes/[intakeId]/messages/route.ts`, `frontend/app/api/intakes/[intakeId]/brief/route.ts`, and `frontend/app/api/intakes/[intakeId]/confirm/route.ts`. These are proposed locations, not existing files.
+For production, use the existing Next.js App Router and schema in `backend/db/schema.ts`. Authenticate patients, load state from server-owned persistence, enforce ownership and status transitions, persist responses before inference, and report submission only after a successful database transition.
 
 ## Backend setup
 
 ### 1. Make the local AI package resolvable
 
-When implementation begins, add the local package to `frontend/package.json` (path is relative to `frontend/`):
+The local package is already listed in `frontend/package.json` (path is relative to `frontend/`):
 
 ```json
 {
@@ -60,7 +59,7 @@ When implementation begins, add the local package to `frontend/package.json` (pa
 }
 ```
 
-Install from `frontend/` and update its lockfile. If Next.js does not transpile the local TypeScript package automatically, add `transpilePackages: ["@consultprep/ai"]` to `frontend/next.config.ts`. Keep imports in server route files only.
+Its compiled entry point is used by Next.js; the frontend `predev` and `prebuild` scripts build the package first. Keep runtime imports in server route files only.
 
 ### 2. Construct the AI service once per server process
 
@@ -90,7 +89,7 @@ The first local call can be slow because the models may need to download and loa
 
 ### 3. Start an intake
 
-The backend calls `ai.startIntake()`, stores the returned `state` in the application’s authorized session store, and returns only the session ID and first assistant message to the browser.
+The demo calls `ai.startIntake()` and returns the initial state to the browser. Production must store state in an authorized server-side session and return only a session ID and the first assistant message.
 
 Suggested API shape:
 
@@ -128,7 +127,7 @@ Backend turn coordinator responsibilities:
 7. Otherwise, merge the returned `fieldUpdates` into the stored fields using the exported `mergeFieldUpdates` helper. Update `activeQuestionId`, `questionsAsked`, question history, and completion state using a server-side turn adapter.
 8. Persist the entire updated state atomically before returning a successful response.
 
-`continueIntake()` returns a turn delta, not a complete replacement state. The CLI has its own state-update helpers inside `scripts/interactive-chat.ts`; they are not a backend session manager. Extract or implement a shared server-side transition helper before wiring the route. In particular, preserve original responses and source IDs, mark the answer to the previously active question, and do not overwrite an urgent safety state with a normal turn.
+`continueIntake()` returns a turn delta, not a complete replacement state. Shared response/turn transition helpers now live in `src/workflow.ts`. Production still needs to load authoritative state on the server and persist transitions atomically. Preserve original responses and source IDs, and do not overwrite an urgent safety state with a normal turn.
 
 Suggested normal response:
 
@@ -198,7 +197,7 @@ if (!response.ok) {
 const turn = await response.json();
 ```
 
-Do not put model code, model weights, retrieval implementation, AMD credentials, or server-side session state in a client component. The present intake preview explicitly says it does not save or send answers; remove or replace that preview messaging only after the corresponding real route has been implemented and verified.
+Do not put model code, model weights, retrieval implementation, AMD credentials, or authoritative server-side session state in a client component. The demo page now explicitly discloses that synthetic answers go to the local AI route and are not saved or submitted.
 
 ## Validation, errors, and privacy
 
@@ -217,4 +216,4 @@ Do not put model code, model weights, retrieval implementation, AMD credentials,
 4. Run one local synthetic end-to-end conversation using the local model only, after the route is connected. This uses local CPU and may download model files, but must not call AMD.
 5. Verify the browser network panel contains only your application API routes and never includes an API key or model provider URL.
 
-Do not claim the frontend/backend/AI integration is complete until requests reach the real server route, session state is persisted by the backend, and the patient can review a source-linked brief. A mocked route test is not live integration evidence.
+The local AI-to-Next.js demo connection is implemented and has passed a real synthetic turn through the built route. Do not claim the production frontend/backend/AI integration is complete until authenticated server-owned sessions, database persistence, and authorized clinician review/submission are implemented. Component mocks are not proof of production integration.

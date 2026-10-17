@@ -5,6 +5,7 @@ export type AiErrorCode =
   | "rate_limited"
   | "provider_unavailable"
   | "timeout"
+  | "cancelled"
   | "invalid_response"
   | "safety_routed";
 
