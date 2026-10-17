@@ -1,12 +1,27 @@
+import { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import ResponseComposer from "../../components/patient/ResponseComposer";
 
+function InitialComposer() {
+  const [value, setValue] = useState("");
+  return (
+    <ResponseComposer
+      label="Your initial concern"
+      instructions="Write in your own words. Use made-up information in this preview."
+      placeholder="For example, a made-up concern."
+      value={value}
+      onChange={setValue}
+      onValidCheck={() => undefined}
+    />
+  );
+}
+
 describe("ResponseComposer", () => {
   it("provides a labeled, instructed, editable multiline field", async () => {
     const user = userEvent.setup();
-    const { rerender } = render(<ResponseComposer />);
+    const { rerender } = render(<InitialComposer />);
     const field = screen.getByRole("textbox", { name: "Your initial concern" }) as HTMLTextAreaElement;
     const instructionsId = field.getAttribute("aria-describedby");
 
@@ -16,7 +31,7 @@ describe("ResponseComposer", () => {
 
     await user.type(field, "A synthetic concern");
     expect(field.value).toBe("A synthetic concern");
-    rerender(<ResponseComposer />);
+    rerender(<InitialComposer />);
     expect(field.value).toBe("A synthetic concern");
     await user.type(field, " to discuss");
     expect(field.value).toBe("A synthetic concern to discuss");
@@ -24,7 +39,7 @@ describe("ResponseComposer", () => {
 
   it("rejects an empty concern with an associated error and field focus", async () => {
     const user = userEvent.setup();
-    render(<ResponseComposer />);
+    render(<InitialComposer />);
     const field = screen.getByRole("textbox", { name: "Your initial concern" });
     const check = screen.getByRole("button", { name: "Check response locally" });
 
@@ -43,7 +58,7 @@ describe("ResponseComposer", () => {
 
   it("rejects whitespace without erasing what was typed", async () => {
     const user = userEvent.setup();
-    render(<ResponseComposer />);
+    render(<InitialComposer />);
     const field = screen.getByRole("textbox", { name: "Your initial concern" }) as HTMLTextAreaElement;
 
     await user.type(field, "   ");
@@ -56,7 +71,7 @@ describe("ResponseComposer", () => {
 
   it("reports only a local check for valid synthetic text", async () => {
     const user = userEvent.setup();
-    render(<ResponseComposer />);
+    render(<InitialComposer />);
     const field = screen.getByRole("textbox", { name: "Your initial concern" }) as HTMLTextAreaElement;
 
     await user.type(field, "I would like to discuss a made-up concern.");
