@@ -15,6 +15,12 @@ These criteria describe observable outcomes. Final API shapes, authorization rul
 
 See [Phase 6 patient interaction evidence](phase-6-patient-interaction-preview.md) and the [test plan](test-plan.md). All other criteria remain unpassed.
 
+## Phase 7 synthetic information-state evidence (2026-10-17)
+
+The static `/intake/states` prototype verifies presentation of five **provisional** labels with synthetic content: Reported retains a patient statement; Unknown retains explicit uncertainty; Not answered invents no response; Unclear retains ambiguous wording; Conflicting displays both statements without choosing one. Text labels and explanations carry meaning without relying on color. See [Phase 7 scenario evidence](phase-7-information-state-preview.md).
+
+This is **synthetic presentation prototype verified**, not integrated behavior. C05 remains blocked by Member 1 information-state/source contracts, Member 2 authorized clinician data, and shared state semantics. P08 skip and P09 uncertainty interactions were not implemented or evaluated. No criterion is newly passed in full.
+
 ## Patient criteria
 
 | ID | Given / When / Then |

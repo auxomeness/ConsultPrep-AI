@@ -29,6 +29,19 @@ export default function IntakePreviewPage() {
       </header>
 
       <IntakeConversation />
+
+      <section aria-labelledby="states-preview-title" className="mt-12 border-t border-line pt-8">
+        <h2 id="states-preview-title" className="text-xl font-semibold">Explore information states</h2>
+        <p className="mt-3 text-sm leading-6 text-muted">
+          A separate synthetic preview compares provisional information labels. Leaving this page clears the local response drafts.
+        </p>
+        <Link
+          href="/intake/states"
+          className="mt-5 inline-flex min-h-12 items-center rounded-lg border border-accent px-5 py-3 font-semibold text-accent hover:bg-preview focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        >
+          View information-state preview
+        </Link>
+      </section>
     </main>
   );
 }
