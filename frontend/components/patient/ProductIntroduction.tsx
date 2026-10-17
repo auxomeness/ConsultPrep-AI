@@ -24,10 +24,6 @@ export default function ProductIntroduction() {
           Begin intake
         </Link>
 
-        <div className="mx-auto mt-10 max-w-lg space-y-2 text-sm leading-6 text-muted">
-          <p>Demo only. Use made-up information; no patient record is created.</p>
-          <p>ConsultPrep does not diagnose, prescribe, or replace professional medical judgment.</p>
-        </div>
       </div>
     </main>
   );
