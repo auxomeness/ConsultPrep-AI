@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:e2e": "npm run build -- --webpack && playwright test"
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@consultprep/ai": "file:../packages/ai",

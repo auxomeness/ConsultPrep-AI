@@ -99,17 +99,14 @@ export default function IntakeConversation() {
   const activeRequestControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (!busy) {
-      setBusyStatusIndex(0);
-      return;
-    }
-    setBusyStatusIndex(0);
+    if (!busy) return;
     const interval = window.setInterval(() => {
       setBusyStatusIndex((index) => (index + 1) % BUSY_STATUSES.length);
     }, 1_400);
     return () => window.clearInterval(interval);
   }, [busy]);
 
+  const hasStartedConversation = Boolean(state);
   useLayoutEffect(() => {
     const startRect = composerStartRectRef.current;
     const composer = composerRef.current;
@@ -128,7 +125,7 @@ export default function IntakeConversation() {
       ],
       { duration: 460, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
     );
-  }, [Boolean(state)]);
+  }, [hasStartedConversation]);
 
   useEffect(() => {
     if (!shouldScrollToLatestMessageRef.current) return;
@@ -145,24 +142,27 @@ export default function IntakeConversation() {
   }, [draft]);
 
   useEffect(() => {
-    try {
-      const stored: unknown = JSON.parse(localStorage.getItem("consultprep.saved-consultations") ?? "[]");
-      if (Array.isArray(stored)) {
-        const saved = stored.filter((item): item is ConversationSnapshot => (
-          item && typeof item === "object" &&
-          typeof item.id === "string" && typeof item.title === "string" &&
-          Array.isArray(item.turns) && item.saved === true
-        ));
-        setSavedConversations(saved);
-        for (const conversation of saved) {
-          const match = /^conversation-(\d+)$/.exec(conversation.id);
-          if (match) nextConversationId.current = Math.max(nextConversationId.current, Number(match[1]) + 1);
+    const timeout = window.setTimeout(() => {
+      try {
+        const stored: unknown = JSON.parse(localStorage.getItem("consultprep.saved-consultations") ?? "[]");
+        if (Array.isArray(stored)) {
+          const saved = stored.filter((item): item is ConversationSnapshot => (
+            item && typeof item === "object" &&
+            typeof item.id === "string" && typeof item.title === "string" &&
+            Array.isArray(item.turns) && item.saved === true
+          ));
+          setSavedConversations(saved);
+          for (const conversation of saved) {
+            const match = /^conversation-(\d+)$/.exec(conversation.id);
+            if (match) nextConversationId.current = Math.max(nextConversationId.current, Number(match[1]) + 1);
+          }
         }
+      } catch {
+        // Ignore unavailable or malformed browser storage.
       }
-    } catch {
-      // Ignore unavailable or malformed browser storage.
-    }
-    setStorageReady(true);
+      setStorageReady(true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   useEffect(() => {
@@ -179,11 +179,15 @@ export default function IntakeConversation() {
         saved: true,
       });
     }
+    let errorTimeout: number | undefined;
     try {
       localStorage.setItem("consultprep.saved-consultations", JSON.stringify(storedConversations));
     } catch {
-      setError("This browser could not save the consultation. Check its storage settings and try again.");
+      errorTimeout = window.setTimeout(() => {
+        setError("This browser could not save the consultation. Check its storage settings and try again.");
+      }, 0);
     }
+    return () => window.clearTimeout(errorTimeout);
   }, [storageReady, savedConversations, conversationId, activeTitle, isActiveSaved, state, turns, brief, safetyStopped]);
 
   function newConversation() {
@@ -302,6 +306,7 @@ export default function IntakeConversation() {
     activeRequestControllerRef.current = controller;
     let activeState = state;
     setDraft("");
+    setBusyStatusIndex(0);
     setBusy(true);
     setError(null);
     setBrief(null);
@@ -333,6 +338,7 @@ export default function IntakeConversation() {
         if (activeState) setState(recordPatientAnswer(activeState as unknown as StructuredIntakeState, answer).state);
         else setDraft((current) => current || answer);
       } else {
+        setDraft((current) => current || answer);
         setError(cause instanceof Error ? cause.message : "The AI service could not process this answer.");
       }
     } finally {
@@ -347,6 +353,7 @@ export default function IntakeConversation() {
     if (!state || busy || safetyStopped) return;
     const controller = new AbortController();
     activeRequestControllerRef.current = controller;
+    setBusyStatusIndex(0);
     setBusy(true);
     setError(null);
     try {
@@ -367,6 +374,7 @@ export default function IntakeConversation() {
     if (!state || busy || !brief) return;
     const controller = new AbortController();
     activeRequestControllerRef.current = controller;
+    setBusyStatusIndex(0);
     setBusy(true);
     setError(null);
     try {

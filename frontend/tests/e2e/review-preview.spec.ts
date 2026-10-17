@@ -5,12 +5,7 @@ test("synthetic review is distinct from the local intake draft and sources work 
   page.on("request", (request) => {
     if (request.method() !== "GET") writes.push(`${request.method()} ${request.url()}`);
   });
-  await page.goto("/intake");
-  const openReview = page.getByRole("link", { name: "Preview synthetic patient review" });
-  await expect(page.getByText(/Your local drafts are not carried there/)).toBeVisible();
-  await openReview.focus();
-  await openReview.press("Enter");
-
+  await page.goto("/intake/review");
   await expect(page).toHaveURL(/\/intake\/review$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Review statements and sources");
   await expect(page.getByText(/No AI generated this example, no patient record/)).toBeVisible();

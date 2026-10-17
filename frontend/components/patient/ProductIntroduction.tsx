@@ -43,7 +43,8 @@ export default function ProductIntroduction() {
             Talk through your concerns with AMD AI and review a source-linked draft summary.
           </p>
           <ul className="mt-6 space-y-3 border-t border-line pt-6 text-sm leading-6 text-foreground">
-            <li>Nothing is saved or sent to a clinician.</li>
+            <li>Your submitted answers are sent to AMD AI for a response.</li>
+            <li>Nothing is saved to a patient record or sent to a clinician.</li>
           </ul>
         </aside>
       </div>

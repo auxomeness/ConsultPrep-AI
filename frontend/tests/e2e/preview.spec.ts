@@ -1,105 +1,89 @@
 import { expect, test } from "@playwright/test";
 
-test("introduction navigates to the clearly labeled intake preview and back", async ({ page }) => {
+test("introduction navigates to the AMD AI demo and back", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(page.getByText("AI documents. Clinicians decide.")).toBeVisible();
-  await page.getByRole("link", { name: "Preview patient intake" }).click();
+  await expect(page.getByText(/submitted answers are sent to AMD AI for a response/i)).toBeVisible();
+  await page.getByRole("link", { name: "Try the AMD AI intake" }).click();
 
   await expect(page).toHaveURL(/\/intake$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Describe your main concern");
-  await expect(page.getByText(/Frontend development preview/)).toBeVisible();
-  await expect(page.getByText(/No patient session is created, nothing is saved or submitted/)).toBeVisible();
-  await expect(page.getByText(/no AI service is called, and no clinician receives this information/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Prepare for a clinician visit");
+  await expect(page.getByRole("note")).toContainText(/development demo/i);
+  await expect(page.getByRole("note")).toContainText(/not saved to a patient record or sent to a clinician/i);
 
-  await page.getByRole("link", { name: "Back to introduction" }).click();
+  await page.getByRole("link", { name: "ConsultPrep AI, introduction" }).click();
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("local concern validation preserves text, focus, and truthful feedback", async ({ page }) => {
+test("empty and whitespace-only concerns cannot be sent, while text remains editable", async ({ page }) => {
   await page.goto("/intake");
-  const field = page.getByRole("textbox", { name: "Your initial concern" });
-  const check = page.getByRole("button", { name: "Check response locally" });
+  const field = page.getByRole("textbox", { name: "Your answer" });
+  const send = page.getByRole("button", { name: "Send answer" });
   const nonGetRequests: string[] = [];
   page.on("request", (request) => {
     if (request.method() !== "GET") nonGetRequests.push(`${request.method()} ${request.url()}`);
   });
 
-  await check.click();
-  const error = page.getByRole("alert").filter({ hasText: /enter a concern/i });
-  await expect(error).toContainText(/enter a concern/i);
-  await expect(page.getByRole("article", { name: "Synthetic preview question" })).toHaveCount(0);
-  await expect(field).toBeFocused();
-  await expect(field).toHaveAttribute("aria-invalid", "true");
-  const errorId = await error.getAttribute("id");
-  expect((await field.getAttribute("aria-describedby"))?.split(" ")).toContain(errorId);
-
+  await expect(send).toBeDisabled();
   await field.fill("   ");
-  await check.click();
   await expect(field).toHaveValue("   ");
-  await expect(error).toBeVisible();
+  await expect(send).toBeDisabled();
+  await field.fill("Synthetic concern");
+  await expect(send).toBeEnabled();
+  await field.focus();
   await expect(field).toBeFocused();
-
-  await field.fill("I would like to discuss a made-up concern.");
-  await field.press("End");
-  await field.pressSequentially(" More detail.");
-  await check.press("Enter");
-  await expect(field).toHaveValue("I would like to discuss a made-up concern. More detail.");
-  await expect(page.getByRole("status")).toContainText(/Local check complete.*not been saved or sent/i);
-  await expect(error).toHaveCount(0);
-  await expect(page.getByText(/^Saved$|^Submitted$|AI has processed/i)).toHaveCount(0);
+  await expect(field).toHaveValue("Synthetic concern");
   expect(nonGetRequests).toEqual([]);
-  await expect(page).toHaveURL(/\/intake$/);
 });
 
-test("checked wording, synthetic follow-up, and second local draft remain truthful and editable", async ({ page }) => {
-  await page.goto("/intake");
-  const initial = page.getByRole("textbox", { name: "Your initial concern" });
-  const check = page.getByRole("button", { name: "Check response locally" });
-  const exactResponse = "  A made-up concern in my own words.\nIt changed yesterday.  ";
-  const nonGetRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.method() !== "GET") nonGetRequests.push(`${request.method()} ${request.url()}`);
+test("synthetic API responses render the question, original answer, and follow-up", async ({ page }) => {
+  const operations: string[] = [];
+  const startState = {
+    schemaVersion: "1.0",
+    concern: "",
+    responses: [],
+    fields: [],
+    questionsAsked: ["What have you been feeling?"],
+    activeQuestionId: "main_concern",
+    completion: "in_progress",
+  };
+  await page.route("**/api/demo/intake", async (route) => {
+    const request = route.request().postDataJSON() as { operation: string; text?: string };
+    operations.push(request.operation);
+    if (request.operation === "start") {
+      await route.fulfill({ json: { state: startState, assistantMessage: "What have you been feeling?" } });
+    } else if (request.operation === "turn") {
+      await route.fulfill({ json: { state: { ...startState, concern: request.text }, assistantMessage: "When did it begin?", safety: false } });
+    } else {
+      await route.abort();
+    }
   });
 
-  await expect(page.getByRole("article", { name: "Initial intake question" })).toBeVisible();
-  await expect(page.getByRole("article", { name: "Synthetic preview question" })).toHaveCount(0);
-  await initial.fill(exactResponse);
-  await check.click();
+  await page.goto("/intake");
+  const field = page.getByRole("textbox", { name: "Your answer" });
+  await field.fill("Synthetic stomach discomfort");
+  await field.press("Enter");
 
-  const patientTurn = page.getByRole("article", { name: /Your response · Local preview/ });
-  const followUp = page.getByRole("article", { name: "Synthetic preview question" });
-  const second = page.getByRole("textbox", { name: "Your response to the synthetic preview question" });
-  await expect(patientTurn.locator("p").first()).toHaveText(exactResponse);
-  await expect(followUp).toContainText("When did this concern begin, and has it changed since then?");
-  await expect(followUp).toContainText("It was not generated by AI or written by a clinician.");
-  const order = await page.getByRole("article").evaluateAll((articles) => articles.map((article) => article.querySelector("h3")?.textContent));
-  expect(order).toEqual(["Initial intake question", "Your response · Local preview", "Synthetic preview question"]);
-
-  await check.focus();
-  await page.keyboard.press("Tab");
-  await expect(second).toBeFocused();
-  await second.fill("A made-up time frame.");
-  await second.press("End");
-  await second.pressSequentially(" More detail.");
-  await expect(second).toHaveValue("A made-up time frame. More detail.");
-  await expect(page.getByRole("button", { name: /save|send|submit/i })).toHaveCount(0);
-  await expect(page.getByText(/^Saved$|^Submitted$|AI has processed/i)).toHaveCount(0);
-  expect(nonGetRequests).toEqual([]);
+  await expect(page.getByRole("article", { name: "ConsultPrep" }).first()).toContainText("What have you been feeling?");
+  await expect(page.getByRole("article", { name: "Your response" })).toContainText("Synthetic stomach discomfort");
+  await expect(page.getByRole("article", { name: "ConsultPrep" }).last()).toContainText("When did it begin?");
+  expect(operations).toEqual(["start", "turn"]);
+  await field.fill("Another synthetic detail");
+  await expect(field).toHaveValue("Another synthetic detail");
+  await expect(page.getByText(/^Saved$|^Submitted$/)).toHaveCount(0);
 });
 
 test.describe("before client hydration", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("the local-check button cannot submit concern text in the URL", async ({ page }) => {
+  test("the disabled send action cannot put concern text in the URL", async ({ page }) => {
     await page.goto("/intake");
-    const field = page.getByRole("textbox", { name: "Your initial concern" });
+    const field = page.getByRole("textbox", { name: "Your answer" });
     await field.fill("A synthetic concern");
-    await page.getByRole("button", { name: "Check response locally" }).click();
-
+    await expect(page.getByRole("button", { name: "Send answer" })).toBeDisabled();
     await expect(page).toHaveURL(/\/intake$/);
     await expect(field).toHaveValue("A synthetic concern");
-    await expect(page.getByRole("status")).toHaveCount(0);
   });
 });
 
@@ -107,33 +91,21 @@ for (const width of [375, 768, 1280]) {
   test(`introduction and intake remain usable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 812 });
     await page.goto("/");
-    const preview = page.getByRole("link", { name: "Preview patient intake" });
-    await expect(preview).toBeVisible();
-    // Regression: the old Webpack build omitted Tailwind utility CSS.
-    expect(await preview.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+    const entry = page.getByRole("link", { name: "Try the AMD AI intake" });
+    await expect(entry).toBeVisible();
+    expect(await entry.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-    await preview.click();
-    const field = page.getByRole("textbox", { name: "Your initial concern" });
-    const check = page.getByRole("button", { name: "Check response locally" });
+    await entry.click();
+    const field = page.getByRole("textbox", { name: "Your answer" });
+    const send = page.getByRole("button", { name: "Send answer" });
     await expect(field).toBeVisible();
-    await expect(check).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-
-    await field.focus();
-    const focusStyle = await field.evaluate((element) => getComputedStyle(element).outlineStyle);
-    expect(focusStyle).not.toBe("none");
-
+    await expect(send).toBeVisible();
     await field.fill("A synthetic concern with a verylongunbrokenwordthatshouldstillwrapwithinthenarrowconversationcolumn.");
-    await check.click();
-    const second = page.getByRole("textbox", { name: "Your response to the synthetic preview question" });
-    await expect(second).toBeVisible();
-    await second.fill("A made-up response.");
-    await expect(second).toHaveValue("A made-up response.");
-    const turnLabels = await page.getByRole("article").evaluateAll((articles) => articles.map((article) => article.querySelector("h3")?.textContent));
-    expect(turnLabels).toEqual(["Initial intake question", "Your response · Local preview", "Synthetic preview question"]);
+    await expect(send).toBeEnabled();
+    await field.focus();
+    await field.press("Tab");
+    await expect(send).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await second.focus();
-    expect(await second.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
   });
 }
