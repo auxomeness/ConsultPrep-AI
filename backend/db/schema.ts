@@ -198,6 +198,25 @@ export const consultationCases = pgTable(
   ],
 );
 
+/** One durable idempotency receipt per submitted intake. The case's unique
+ * intake_session_id remains the second line of defense against duplicate cases. */
+export const submissionReceipts = pgTable(
+  "submission_receipts",
+  {
+    idempotencyKey: uuid("idempotency_key").primaryKey(),
+    intakeSessionId: uuid("intake_session_id").notNull().unique("submission_receipts_session_unique"),
+    caseId: uuid("case_id").notNull().unique("submission_receipts_case_unique"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "submission_receipts_case_same_session_fk",
+      columns: [table.caseId, table.intakeSessionId],
+      foreignColumns: [consultationCases.id, consultationCases.intakeSessionId],
+    }).onDelete("restrict"),
+  ],
+);
+
 export const clinicianRevisions = pgTable(
   "clinician_revisions",
   {

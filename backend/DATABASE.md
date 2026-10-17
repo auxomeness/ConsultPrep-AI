@@ -20,6 +20,7 @@ Lifecycle transitions are enforced by application server code, not just enum val
 
 - `db/schema.ts`: Drizzle definitions for enums, tables, foreign keys, indexes, and checks.
 - `db/migrations/0001_initial.sql`: versioned initial PostgreSQL migration, including Supabase Auth profile provisioning and RLS policies.
+- `db/migrations/0002_submission_receipts.sql`: additive submission idempotency receipt and same-session case relationship.
 - `db/seed.sql`: idempotent synthetic case fixture only.
 - `drizzle.config.ts`: Drizzle Kit configuration. It expects `DATABASE_URL` and Drizzle Kit to be installed in the backend workspace.
 
@@ -35,6 +36,7 @@ Prerequisites: Supabase CLI and Docker installed; run commands from the reposito
    ```powershell
    $env:DATABASE_URL = "<local-supabase-postgres-url>"
    psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/db/migrations/0001_initial.sql
+   psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/db/migrations/0002_submission_receipts.sql
    ```
 
 3. Create two synthetic Auth users in local Supabase Auth (or via the local Auth API): `patient.demo@consultprep.test` and `clinician.demo@consultprep.test`. Use disposable local-only passwords. The migration trigger creates both profiles with the `patient` role. The trusted local seed script promotes only the exact synthetic clinician account.
@@ -61,6 +63,7 @@ No remote or local migration was run as part of this deliverable.
 ## Recovery and rollback
 
 - `0001_initial.sql` creates types, tables, trigger/function, indexes, and policies. It is intentionally additive and contains no `DROP`, truncate, or data rewrite.
+- `0002_submission_receipts.sql` adds an empty table and constraints in a transaction. It does not modify existing intake data. Consult `persistence/CONSULTATION_PERSISTENCE.md` for the submission transaction contract and its unimplemented database adapter.
 - There is no automatic down migration. For an unapplied migration, do not run it. For a failed transaction, PostgreSQL rolls back the transaction only if the runner wrapped the migration transaction; this SQL file itself does not open a transaction because migration tools manage that boundary differently. Inspect the target catalog before retrying.
 - If already applied, prefer a new forward migration for corrections. Do not drop these tables or enum types to “roll back” a shared/production database. First take/verify a backup, capture the failure and affected objects, and get explicit approval for any destructive recovery.
 - Preserve intake responses, source links, and clinician revisions. Deleting a session is restricted by foreign keys. Any retention/deletion process needs an explicitly approved policy and audited procedure.
