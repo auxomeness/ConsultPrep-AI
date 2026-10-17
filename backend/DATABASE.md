@@ -29,7 +29,7 @@ RLS policies grant authenticated users read access to their own patient records 
 
 ## Local setup (Supabase CLI)
 
-Prerequisites: Supabase CLI and Docker installed; run commands from the repository root. These commands target the local Supabase stack.
+Prerequisites: Supabase CLI and Docker installed; run commands from the repository root. This repository does not currently have `supabase/config.toml`, so run `supabase init` once and review the generated local configuration before `supabase start`. These commands target the local Supabase stack.
 
 1. Start Supabase locally: `supabase start`.
 2. Apply the migration using the local database URL shown by `supabase status`:
@@ -41,24 +41,32 @@ Prerequisites: Supabase CLI and Docker installed; run commands from the reposito
    psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/db/migrations/0003_clinician_revision_order.sql
    ```
 
-3. Create two synthetic Auth users in local Supabase Auth (or via the local Auth API): `patient.demo@consultprep.test` and `clinician.demo@consultprep.test`. Use disposable local-only passwords. The migration trigger creates both profiles with the `patient` role. The trusted local seed script promotes only the exact synthetic clinician account.
-4. Seed the synthetic case:
+3. To run the RLS authorization script, create four synthetic Auth users in local Supabase Auth (or via the local Auth API): `patient.demo@consultprep.test`, `patient.other@consultprep.test`, `clinician.demo@consultprep.test`, and `clinician.other@consultprep.test`. Use disposable local-only passwords. The migration trigger creates all profiles with the `patient` role. The local seed promotes only the exact synthetic clinician account.
+4. If you want the demo case fixture, seed it locally:
 
    ```powershell
    psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f backend/db/seed.sql
    ```
 
-5. Verify the rows and relationships with read-only queries before using the fixture. The seed's UUIDs are deterministic and its inserts use `ON CONFLICT DO NOTHING`; to reseed after intentionally changing fixture content, edit the fixture IDs or remove only those known local fixture rows in dependency order.
+5. Run the RLS check and verify rows and relationships with read-only queries before using the fixture. The seed's UUIDs are deterministic and its inserts use `ON CONFLICT DO NOTHING`; to reseed after intentionally changing fixture content, edit the fixture IDs or remove only those known local fixture rows in dependency order.
 
 The root `frontend/` package does not currently include Drizzle or Drizzle Kit. If the team adopts Drizzle for runtime queries and migration generation, install compatible versions in the chosen application workspace and add explicit scripts before using `drizzle.config.ts`. The hand-authored SQL migration remains the authoritative migration in this deliverable; regenerate and review SQL when the Drizzle schema changes.
 
 ## Remote setup
 
-1. Create or select the intended Supabase development project and verify its owner, region, backup status, and target environment.
-2. Store the direct PostgreSQL connection string in a secret manager or inject it into the shell as `DATABASE_URL`; do not save it in the repository, expose it through `NEXT_PUBLIC_`, or paste it into logs.
-3. Review `0001_initial.sql` and the RLS behavior against the actual auth/clinician assignment workflow. Apply to a disposable local project first, then a dedicated staging project and verify tables, policies, trigger behavior, constraints, and read/write access with synthetic accounts.
-4. Only after explicit confirmation of the target and approval to mutate it, apply this additive migration to the selected remote project using the team's approved migration runner. Do not use the local `psql` example pointed at production or a shared project by accident.
-5. Promote clinician roles and assign demo cases only using a trusted operator/server process. Never allow a client to write its own role.
+Use this procedure for a dedicated development or staging project. It is a setup checklist, not authorization to change a database. Do not use a production or shared project for this prototype.
+
+1. **Create or select the Supabase project.** Confirm the project name and ID, organization/owner, region, and that it is the intended non-production environment. Record the project ID in team documentation; never put passwords or connection strings there.
+2. **Check recovery readiness.** Confirm an appropriate backup/restore point exists and that the project owner knows how to recover it. Confirm whether any data already exists. Do not apply the initial schema over a database with unknown tables or policies.
+3. **Rehearse on a disposable local Supabase database.** Apply `0001_initial.sql`, `0002_submission_receipts.sql`, and `0003_clinician_revision_order.sql` in order. Review the resulting table definitions, foreign keys, constraints, trigger, and RLS policies. Run `db/tests/authorization_rls.sql` with its four required synthetic Auth users. The repo has no Supabase CLI project configuration or migration runner, so use the manual SQL workflow documented under Local setup; do not run `drizzle-kit migrate`.
+4. **Review the exact SQL and access model.** Check all three migration files and confirm that the `private` schema is not exposed in Supabase API settings. The current RLS policies are read-only, and the application has no authenticated API/database adapter. Do not connect a patient-facing app or enable client-side writes on this basis alone.
+5. **Agree who is applying the change.** Obtain explicit project-owner approval for the exact staging project and migration set. Choose the team's approved migration runner and document the operator, target project ID, migration order, and recovery contact. No remote migration runner is configured in this repository. If the team chooses direct `psql`, use only a dedicated staging connection after checking its project identity; never reuse a production/shared connection.
+6. **Secure the connection.** Retrieve the Supabase direct PostgreSQL connection string through the project's secret manager/settings and inject it into the operator's shell as `DATABASE_URL`. Do not save it in `.env.example`, source control, browser variables, chat, terminal transcripts, or logs. Use a database role with only the privileges needed to apply the approved migrations.
+7. **Apply migrations in order after target re-verification.** The operator should verify the connection points to the approved staging project immediately before running SQL. Use the team's approved runner and record each migration's success/failure. The migration files are `0001_initial.sql`, then `0002_submission_receipts.sql`, then `0003_clinician_revision_order.sql`. Stop on the first error; inspect the database catalog and transaction outcome before retrying. Do not blindly rerun a partially applied migration.
+8. **Verify the resulting schema and policies.** Read the database catalog to confirm the expected tables, enum types, indexes, foreign keys, and RLS-enabled state. Confirm the Auth-user trigger creates a `patient` profile and that an authenticated patient cannot read another patient's records. Confirm an assigned clinician can read only assigned cases. The SQL RLS test is an integration check to run with synthetic identities; it has not been run against a remote database as part of this work.
+9. **Create synthetic identities through Supabase Auth.** Use non-real test accounts and disposable credentials. The trigger gives new accounts the `patient` role. Do not let users set their own role through user metadata or client requests. Promote a clinician and assign demo cases only through a trusted operator/server process after the authorization design is approved.
+10. **Seed only an isolated demo project, if needed.** `db/seed.sql` promotes the exact `clinician.demo@consultprep.test` identity and inserts a synthetic case. It is documented as local-only; do not run it on shared staging or production. For a dedicated remote demo project, create a separately reviewed seed/migration that cannot promote arbitrary accounts, and get owner approval before running it.
+11. **Record the outcome and remaining gaps.** Note the project ID, migration versions applied, verification results, and any failures without recording secrets or patient data. Database setup alone does not complete application integration: authentication routes, server-side authorization, a concrete transaction adapter, and live persistence tests are still required.
 
 No remote or local migration was run as part of this deliverable.
 
