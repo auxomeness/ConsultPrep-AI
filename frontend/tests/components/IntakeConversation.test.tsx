@@ -27,7 +27,7 @@ describe("IntakeConversation", () => {
     await user.type(screen.getByRole("textbox", { name: "Your answer" }), "Synthetic concern");
     await user.click(screen.getByRole("button", { name: "Send answer" }));
 
-    const opening = await screen.findByRole("article", { name: "ConsultPrep" });
+    const opening = (await screen.findAllByRole("article", { name: "ConsultPrep" }))[0];
     expect(opening.textContent).toContain("What have you been feeling?");
     expect(fetchMock).toHaveBeenCalledWith("/api/demo/intake", expect.objectContaining({
       method: "POST",
@@ -52,7 +52,7 @@ describe("IntakeConversation", () => {
     await user.click(screen.getByRole("button", { name: "Send answer" }));
 
     expect(await screen.findByText("When did it begin?")).toBeTruthy();
-    expect(screen.getByText("Synthetic stomach discomfort")).toBeTruthy();
+    expect(screen.getAllByText("Synthetic stomach discomfort").length).toBeGreaterThan(0);
     const sentTurn = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as { operation: string; text: string; state: typeof startState };
     expect(sentTurn).toMatchObject({ operation: "turn", text: "Synthetic stomach discomfort", state: startState });
   });

@@ -114,7 +114,12 @@ export default function IntakeConversation() {
     const startRect = composerStartRectRef.current;
     const composer = composerRef.current;
     composerStartRectRef.current = null;
-    if (!startRect || !composer || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (
+      !startRect ||
+      !composer ||
+      typeof composer.animate !== "function" ||
+      (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ) return;
 
     const endRect = composer.getBoundingClientRect();
     const deltaX = startRect.left - endRect.left;
@@ -133,7 +138,9 @@ export default function IntakeConversation() {
   useEffect(() => {
     if (!shouldScrollToLatestMessageRef.current) return;
     const chat = chatScrollRef.current;
-    if (chat) chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+    if (chat && typeof chat.scrollTo === "function") {
+      chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+    }
     shouldScrollToLatestMessageRef.current = false;
   }, [turns, brief]);
 
@@ -333,6 +340,7 @@ export default function IntakeConversation() {
         if (activeState) setState(recordPatientAnswer(activeState as unknown as StructuredIntakeState, answer).state);
         else setDraft((current) => current || answer);
       } else {
+        setDraft(answer);
         setError(cause instanceof Error ? cause.message : "The AI service could not process this answer.");
       }
     } finally {

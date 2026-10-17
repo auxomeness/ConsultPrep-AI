@@ -14,7 +14,7 @@ describe("ProductIntroduction", () => {
 
     const preview = screen.getByRole("link", { name: "Try the AMD AI intake" });
     expect(preview.getAttribute("href")).toBe("/intake");
-    expect(screen.getByText(/Synthetic demo only.*Nothing is saved to a patient record/i)).toBeTruthy();
-    expect(screen.getByText(/Your submitted answers are sent to AMD for a response/i)).toBeTruthy();
+    expect(screen.getByText(/Development demo.*Nothing is saved to a patient record or sent to a clinician/i)).toBeTruthy();
+    expect(screen.getByText(/Talk through your concerns with AMD AI and review a source-linked draft summary/i)).toBeTruthy();
   });
 });
