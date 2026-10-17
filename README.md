@@ -41,6 +41,10 @@ The system organizes their responses into a structured brief while preserving li
 
 Potentially urgent symptoms must not be held up by routine intake or completion requirements.
 
+## AI Integration Status
+
+The current frontend intake page is a non-persistent preview. The AI package is ready to be called from a Node.js backend, and the intake path currently uses the local model only. Backend routes, authenticated session storage, and frontend-to-backend integration are not implemented yet. See the [frontend/backend AI integration guide](packages/ai/docs/frontend-backend-integration.md) for the proposed HTTP contract, server setup, state lifecycle, and verification steps.
+
 ## Consultation Brief Structure
 
 A generated brief may include:
@@ -64,7 +68,7 @@ The intended technology stack includes:
 |---|---|
 | Frontend and application | Next.js, React, TypeScript |
 | Styling and components | Tailwind CSS, shadcn/ui |
-| AI inference | AMD Token Factory API |
+| AI inference | Local Qwen3-0.6B for the current intake; AMD client is not used by the intake flow |
 | Database | Supabase-hosted PostgreSQL |
 | Database access | Drizzle ORM, subject to existing project conventions |
 | Runtime validation | Zod |
@@ -72,9 +76,9 @@ The intended technology stack includes:
 | Testing | Vitest, React Testing Library, Playwright |
 | Version control | Git and GitHub |
 
-**Note:** The exact AMD Token Factory model, endpoint, authentication method, and request/response format must be verified against the selected service before implementation. The table describes the intended architecture, not a claim that every component is already implemented.
+**Note:** AMD Token Factory support remains a separate, unverified capability. The current interactive intake uses local inference only and does not send AMD requests. The table describes the current intake provider and planned stack, not a claim that every component is already implemented.
 
-Developer 1's initial AI package uses local embeddings for project-guidance retrieval. AMD inference is tested only after offline completion; the initial live validation is one synthetic request.
+Developer 1's AI package uses local embeddings for project-guidance retrieval. The current intake path is local-only; do not run AMD inference until explicitly approved.
 
 ## Architecture Principles
 
