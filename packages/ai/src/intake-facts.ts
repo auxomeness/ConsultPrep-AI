@@ -36,7 +36,7 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
     ["runny_nose", "Runny nose", /\brunny nose\b/i],
     ["cold_like_symptoms", "Cold-like symptoms (patient-described)", /\b(?:common cold|cold symptoms|colds|a cold)\b/i],
     ["fever", "Feeling hot or feverish (patient-reported; no measurement stated)", /\b(?:i feel like i have (?:a )?fever|i have (?:a )?fever|fever|feverish|i feel hot|i am hot|i'm hot|feeling hot)\b/i],
-    ["weakness", "Weakness", /\bweak(?:ness)?\b|\bno energy\b/i],
+    ["weakness", "Weakness", /\bweak(?:ness)?\b/i],
     ["body_aches", "Body aches", /\bbody aches?\b|\bmuscle aches?\b/i],
     ["chills", "Feeling cold or chills", /\b(?:chills?|shivering|feeling cold|feel cold)\b/i],
     ["stomach_pain", "Stomach or abdominal discomfort", /\b(?:stomach|abdominal|belly)\s+(?:ache|pain|cramp)s?\b|\b(?:my\s+)?(?:stomach|belly)\s+hurts\b/i],
@@ -51,6 +51,28 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
     if (!pattern.test(text)) continue;
     fields.push({ fieldId, value: isNegatedSymptom(text, pattern) ? `Patient denied ${value.toLowerCase()}` : value,
       status: isNegatedSymptom(text, pattern) ? "patient_denied" : factStatus, sourceResponseIds: source });
+  }
+  if (/\b(?:lost|low|less|reduced|no) energy\b|\b(?:tired|fatigued|exhausted)\b/i.test(text)) {
+    fields.push({ fieldId: "energy_level", value: normalizeLabel(text.match(/\b(?:lost|low|less|reduced|no) energy\b|\b(?:tired|fatigued|exhausted)\b/i)![0]), status: factStatus, sourceResponseIds: source });
+  }
+  if (/\bweak(?:ness)?\b/i.test(text)) {
+    const lowEnergy = /\b(?:low|lost|less|reduced|no) energy|tired|fatigued|exhausted\b/i.test(text);
+    const muscleDifficulty = /\b(?:muscles? (?:feel|are) weak|weakness in (?:my )?(?:arms?|legs?|hands?|feet)|hard to move|difficulty moving)\b/i.test(text);
+    const value = lowEnergy && !muscleDifficulty ? "Patient describes low energy; muscle weakness not established"
+      : muscleDifficulty ? "Patient describes muscle weakness or difficulty moving"
+        : null;
+    fields.push({ fieldId: "weakness_description", value, status: value ? factStatus : "unclear", sourceResponseIds: source });
+  }
+  if ((activeQuestionId ?? response.questionBankId) === "general_weakness_type") {
+    const lowEnergyAnswer = /\b(?:energy|tired|fatigued|exhausted|sleepy|worn out)\b/i.test(text);
+    const muscleAnswer = /\b(?:muscles?|strength|moving|move|stand|walk|arms?|legs?)\b/i.test(text);
+    fields.push({
+      fieldId: "weakness_description",
+      value: lowEnergyAnswer && !muscleAnswer ? "Patient describes low energy; muscle weakness not established"
+        : muscleAnswer ? normalizeLabel(text) : null,
+      status: lowEnergyAnswer || muscleAnswer ? factStatus : "unclear",
+      sourceResponseIds: source,
+    });
   }
 
   const eyeSorenessPattern = /\b(?:sore|painful|hurting|ache|aching)\s+(?:in\s+)?(?:my\s+)?eyes?\b|\b(?:my\s+)?eyes?\s+(?:are\s+)?(?:sore|painful|hurting|achey?)\b/i;
@@ -108,6 +130,11 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
   if (target === "onset_pattern" && /\b(sudden(?:ly)?|gradual(?:ly)?)\b/i.test(text)) fields.push({ fieldId: target, value: normalizeLabel(text.match(/\b(sudden(?:ly)?|gradual(?:ly)?)\b/i)![0]), status: factStatus, sourceResponseIds: source });
   if (target === "previous_episodes" && /\b(before|previously|in the past|first time|never had this|happened before|similar before)\b/i.test(text)) fields.push({ fieldId: target, value: normalizeLabel(text), status: factStatus, sourceResponseIds: source });
   if (target === "episode_pattern" && /\b(continuous|constant|comes and goes|come and go|intermittent|occasionally|every day|daily|once a day|twice a day)\b/i.test(text)) fields.push({ fieldId: target, value: normalizeLabel(text), status: factStatus, sourceResponseIds: source });
+
+  if (/\b(find|locate|look(?:ing)? for|help me (?:find|get|see)|need|want|book|schedule|arrange)\b/i.test(text)
+    && /\b(cardi(?:o(?:log(?:y|ist))?)|x\s*[- ]?ray|radiology|imaging|scan|specialist|clinic|hospital|doctor|provider)\b/i.test(text)) {
+    fields.push({ fieldId: "patient_goal", value: normalizeLabel(text), status: factStatus, sourceResponseIds: source });
+  }
 
   const progression = extractProgression(text, target);
   if (progression) fields.push({ fieldId: "progression", value: progression, status: factStatus, sourceResponseIds: source });
@@ -259,6 +286,9 @@ function extractProgression(text: string, target: string): string | null {
 }
 
 function extractImpact(text: string, target: string): string | null {
+  if (target === "daily_impact" && /\b(?:chores|housework|household tasks?|usual activities|daily activities)\b/i.test(text)) return normalizeLabel(text);
+  const householdTask = text.match(/\b(?:doing|do)\s+(?:the\s+)?(?:chores|housework|household tasks?)\b[^.!?]{0,45}\b(?:harder|difficult|hard|struggle|tiring)\b|\b(?:chores|housework|household tasks?)\b[^.!?]{0,45}\b(?:harder|difficult|hard|struggle|tiring)\b/i);
+  if (householdTask) return normalizeLabel(householdTask[0]);
   const activity = text.match(/\b(?:difficulty|hard|unable|can't|cannot|not able to|struggle to)\s+(?:with\s+|to\s+)?(read|walk|stand|work|sleep|eat|drive|see|move|get up)\b|\b(?:can't|cannot|unable to|not able to)\s+(?:do|manage)\s+(?:my\s+)?(?:usual\s+)?activities\b/i);
   if (activity) return normalizeLabel(activity[0]);
   if (target === "daily_impact" && /\b(?:affects? my activities|interferes? with my|stops? me from|prevents? me from)\b/i.test(text)) return normalizeLabel(text);
@@ -270,7 +300,7 @@ function isDenial(text: string): boolean {
 }
 
 function isDecline(text: string): boolean {
-  return /^\s*(?:skip|prefer not to say|i don't want to answer|i do not want to answer)\b/i.test(text);
+  return /^\s*(?:skip(?: this)?|prefer not to say|i(?:'d| would) rather not (?:say|answer)|i don't want to answer|i do not want to answer|i'm not comfortable answering)\b/i.test(text);
 }
 
 function isUnknown(text: string): boolean {

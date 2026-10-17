@@ -1,9 +1,15 @@
 import type { IntakeField, IntakeState, NextTurnResult, QuestionHistoryEntry } from "./contracts.js";
 import { extractPatientFacts, mergeFieldUpdates } from "./intake-facts.js";
 import { QUESTION_BANK } from "./question-bank.js";
+import { classifyConversationIntent } from "./conversation.js";
 
 /** Add one patient answer and locally extracted facts to an intake state. */
 export function recordPatientAnswer(state: IntakeState, text: string): { state: IntakeState; responseId: string } {
+  const intent = classifyConversationIntent({ text, isFirstPatientTurn: state.responses.length === 0 });
+  if (intent === "correction") {
+    const responseId = `response-${state.responses.length + 1}`;
+    return { state: recordPatientCorrection(state, text), responseId };
+  }
   const responseId = `response-${state.responses.length + 1}`;
   const activeQuestionId = state.activeQuestionId;
   const activeQuestion = state.questionsAsked.at(-1) ?? "";
@@ -15,16 +21,18 @@ export function recordPatientAnswer(state: IntakeState, text: string): { state: 
     ...(activeQuestionId ? { questionBankId: activeQuestionId } : {}),
     createdAt: new Date().toISOString(),
   };
-  const updates = extractPatientFacts(response, activeQuestion, activeQuestionId);
+  const nonClinicalOpening = ["greeting", "identity_question", "vague_opening", "ambiguous_opening"].includes(intent);
+  const updates = nonClinicalOpening ? [] : extractPatientFacts(response, activeQuestion, activeQuestionId);
   const fields = mergeFieldUpdates(state.fields, updates);
-  const questionHistory = activeQuestionId
+  const questionHistory = activeQuestionId && !nonClinicalOpening
     ? markQuestionAnswered(state.questionHistory ?? [], activeQuestionId, responseId, updates, text)
     : state.questionHistory;
   return {
     responseId,
     state: {
       ...state,
-      concern: state.concern || text,
+      concern: state.concern || (nonClinicalOpening || ["finish", "workflow_question", "summary", "decline", "unclear"].includes(intent)
+        || updates.every((field) => field.fieldId === "patient_question") ? "" : text),
       responses: [...state.responses, response],
       fields,
       ...(questionHistory ? { questionHistory } : {}),
@@ -33,22 +41,25 @@ export function recordPatientAnswer(state: IntakeState, text: string): { state: 
 }
 
 /** Apply the AI service's validated turn delta without replacing patient evidence. */
-export function applyIntakeTurn(state: IntakeState, result: Pick<NextTurnResult, "fieldUpdates" | "askedQuestion" | "askedQuestionId">): IntakeState {
+export function applyIntakeTurn(state: IntakeState, result: Pick<NextTurnResult, "fieldUpdates" | "askedQuestion" | "askedQuestionId" | "guidanceProvided">): IntakeState {
   const fields = new Map(state.fields.map((field) => [field.fieldId, field]));
   for (const field of result.fieldUpdates) fields.set(field.fieldId, field);
-  const questionId = result.askedQuestionId ?? "completion_check";
-  const alreadyLogged = (state.questionHistory ?? []).some((entry) => entry.questionId === questionId && entry.status === "asked");
-  const questionHistory = alreadyLogged ? state.questionHistory : [...(state.questionHistory ?? []), {
+  const questionId = result.askedQuestion ? result.askedQuestionId ?? "completion_check" : null;
+  const alreadyLogged = questionId !== null && (state.questionHistory ?? []).some((entry) => entry.questionId === questionId && entry.status === "asked");
+  const questionHistory = questionId === null || alreadyLogged ? state.questionHistory : [...(state.questionHistory ?? []), {
     questionId,
     targetField: QUESTION_BANK.find((item) => item.id === questionId)?.targetField ?? questionId,
     status: "asked" as const,
     sourceResponseIds: [],
   }];
+  const { activeQuestionId: _previousActiveQuestionId, ...stateWithoutActiveQuestion } = state;
   return {
-    ...state,
+    ...stateWithoutActiveQuestion,
     fields: [...fields.values()],
-    activeQuestionId: questionId,
+    ...(questionId ? { activeQuestionId: questionId } : {}),
     questionHistory,
+    completion: result.askedQuestion ? "in_progress" : "ready_for_review",
+    ...(result.guidanceProvided ? { guidanceProvided: [...(state.guidanceProvided ?? []), result.guidanceProvided] } : {}),
     questionsAsked: result.askedQuestion && !state.questionsAsked.some((question) => normalize(question) === normalize(result.askedQuestion!))
       ? [...state.questionsAsked, result.askedQuestion]
       : state.questionsAsked,
@@ -66,7 +77,7 @@ function markQuestionAnswered(
     : QUESTION_BANK.find((question) => question.id === questionId)?.targetField
       ?? (questionId.startsWith("symptom_onset__") ? "symptom_onset" : questionId);
   const fact = updates.find((field) => field.fieldId === target || (target === "symptom_onset" && field.fieldId.startsWith("symptom_onset_")));
-  const status: QuestionHistoryEntry["status"] = fact?.status === "declined" ? "declined"
+  const status: QuestionHistoryEntry["status"] = fact?.status === "declined" || /^\s*(?:skip|prefer not to say|i(?:'d| would) rather not|i (?:do not|don't) want to answer)\b/i.test(responseText) ? "declined"
     : fact?.status === "unclear" ? "requires_clarification"
       : fact?.status === "unknown" || fact?.status === "patient_denied" || fact?.status === "reported" || fact?.status === "patient_corrected" ? "answered"
         : history.at(-1)?.questionId === questionId && ["requires_clarification", "partially_answered"].includes(history.at(-1)?.status ?? "") ? "answered"

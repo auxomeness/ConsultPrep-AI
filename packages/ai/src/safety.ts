@@ -21,7 +21,7 @@ const URGENT_RULES: Array<{ id: string; pattern: RegExp }> = [
   { id: "shortness_of_breath_with_palpitations", pattern: /\b(shortness of breath|difficulty breathing|trouble breathing|can't breathe|cannot breathe)\b[\s\S]{0,80}\b(palpitations?|palpitating|heart (?:is )?(?:racing|pounding|fluttering)|racing heart)\b|\b(palpitations?|palpitating|heart (?:is )?(?:racing|pounding|fluttering)|racing heart)\b[\s\S]{0,80}\b(shortness of breath|difficulty breathing|trouble breathing|can't breathe|cannot breathe)\b/i },
   { id: "synthetic_severe_chest_pain", pattern: /\b(severe|crushing|intense)\s+chest\s+pain\b/i },
   { id: "synthetic_difficulty_breathing", pattern: /\b(difficulty breathing|trouble breathing|can't breathe|cannot breathe|shortness of breath)\b/i },
-  { id: "reported_inability_to_move", pattern: /\b(can't|cannot|unable to)\s+(?:move|stand|walk|get up)\b/i },
+  { id: "reported_inability_to_move", pattern: /\b(?:can'?t|cannot|unable to|can barely|can hardly)\s+(?:move|stand|walk|get up)\b/i },
   { id: "new_confusion_or_loss_of_consciousness", pattern: /\b(?:sudden(?:ly)? confused|sudden(?:ly)? (?:became|become) confused|new confusion|confused all of a sudden|lost consciousness|passed out|unconscious|not waking up)\b/i },
   { id: "severe_or_sudden_weakness", pattern: /\b(?:sudden(?:ly)? severe weakness|severe sudden weakness|suddenly weak on one side|sudden(?:ly)? (?:have|had) severe weakness(?: on one side)?|one[- ]sided weakness)\b/i },
   { id: "synthetic_possible_heart_attack_or_stroke", pattern: /\b(am i having|i think i'?m having|having symptoms of)\s+(a\s+)?(heart attack|stroke)\b/i },
@@ -69,6 +69,16 @@ export function assessSafety(state: Pick<IntakeState, "responses">): SafetyEvent
     return { routed: true, ruleId: combinedRuleId, guidance: urgentGuidanceForRule(combinedRuleId), matchedResponseIds: state.responses.map((response) => response.id) };
   }
   return { routed: false, ruleId: null, guidance: null, matchedResponseIds: [] };
+}
+
+/** A non-diagnostic prompt-assessment signal; it never labels the case an emergency. */
+export function assessPromptAssessmentNeed(state: Pick<IntakeState, "responses" | "fields">): boolean {
+  const text = `${state.responses.map((response) => response.text).join("\n")}\n${state.fields.map((field) => field.value ?? "").join("\n")}`;
+  const worsening = /\b(worsening|getting worse|worse|declining)\b/i.test(text);
+  const weakness = /\b(weak(?:ness)?|low energy|lost energy|fatigue|exhausted|tired)\b/i.test(text);
+  const impact = /\b(chores|usual activities|daily activities|harder to|can't do|cannot do|affect(?:s|ed|ing)? my|lost energy|need to lie down)\b/i.test(text);
+  const explicitMuscleDifficulty = /\b(muscles? (?:feel|are) weak|loss of muscle strength|difficulty moving|hard to move)\b/i.test(text);
+  return worsening && weakness && (impact || explicitMuscleDifficulty);
 }
 
 export function urgentGuidanceForText(text: string): string | null {

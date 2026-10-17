@@ -50,6 +50,13 @@ export const SafetyEventSchema = z.object({
 });
 export type SafetyEvent = z.infer<typeof SafetyEventSchema>;
 
+export const GuidanceRecordSchema = z.object({
+  text: z.string().min(1).max(2_000),
+  category: z.enum(["general_information", "prompt_assessment", "urgent_safety"]),
+  sourceResponseIds: z.array(z.string().min(1)).min(1).max(20),
+});
+export type GuidanceRecord = z.infer<typeof GuidanceRecordSchema>;
+
 export const IntakeStateSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   concern: z.string().max(8_000),
@@ -61,6 +68,7 @@ export const IntakeStateSchema = z.object({
   completion: z.enum(["in_progress", "ready_for_review", "completed"]),
   patientConfirmed: z.boolean().optional(),
   safety: SafetyEventSchema.optional(),
+  guidanceProvided: z.array(GuidanceRecordSchema).max(50).optional(),
 });
 export type IntakeState = z.infer<typeof IntakeStateSchema>;
 
@@ -72,6 +80,7 @@ export const NextTurnResultSchema = z.object({
   askedQuestion: z.string().max(500).nullable(),
   askedQuestionId: z.string().min(1).nullable().optional(),
   fieldUpdates: z.array(FieldUpdateSchema).max(30),
+  guidanceProvided: GuidanceRecordSchema.optional(),
 });
 export type NextTurnResult = z.infer<typeof NextTurnResultSchema>;
 
@@ -136,6 +145,11 @@ export function validateIntakeState(input: unknown): IntakeState {
     }
   }
   validateFieldSourceIds([...state.fields], responseIds);
+  for (const guidance of state.guidanceProvided ?? []) {
+    for (const responseId of guidance.sourceResponseIds) {
+      if (!responseIds.has(responseId)) throw new Error(`Guidance references unknown response ${responseId}`);
+    }
+  }
   for (const entry of state.questionHistory ?? []) {
     if (["answered", "partially_answered", "skipped", "declined", "requires_clarification"].includes(entry.status) && entry.sourceResponseIds.length === 0) {
       throw new Error(`Question ${entry.questionId} requires a response source for status ${entry.status}`);
@@ -197,6 +211,7 @@ export const StructuredConsultationBriefSchema = z.object({
     message: z.string(),
     sourceResponseIds: z.array(z.string()).min(1),
   })).default([]),
+  guidanceProvided: z.array(GuidanceRecordSchema).default([]),
   intakeCompleteness: z.object({
     status: z.enum(["known", "unknown", "clarification_needed", "potentially_urgent", "sufficiently_covered"]),
     reviewStatus: z.literal("provisional_requires_clinician_review"),

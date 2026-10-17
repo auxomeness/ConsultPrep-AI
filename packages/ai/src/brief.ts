@@ -110,6 +110,7 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
     associatedSymptoms: factsFor(additional),
     importantUnansweredQuestions: topUnanswered,
     patientConcernsAndQuestions: patientQuestions,
+    guidanceProvided: state.guidanceProvided ?? [],
     automatedSafetyFlags: automatedSafety.routed && automatedSafety.ruleId ? [{
       ruleId: automatedSafety.ruleId,
       message: automatedSafety.guidance ?? "Automated safety rule matched; this is not a diagnosis and does not rule out other urgent concerns.",
@@ -189,6 +190,10 @@ export function formatStructuredBrief(brief: StructuredConsultationBrief): strin
   });
 
   pushSection(lines, "Your Questions", brief.patientConcernsAndQuestions, width);
+  if (brief.guidanceProvided.length) {
+    addHeading(lines, "Guidance Shared During Intake");
+    brief.guidanceProvided.forEach((item) => appendWrapped(lines, `• ${item.text} (${item.category.replace(/_/g, " ")}; prompted by ${formatSources(item.sourceResponseIds)})`, width, "  "));
+  }
   pushSection(lines, "Safety-Relevant Statements", brief.safetyRelevantStatements, width);
   if (brief.automatedSafetyFlags.length) {
     addHeading(lines, "Safety Notice");
@@ -325,6 +330,9 @@ function validateBriefEvidence(brief: StructuredConsultationBrief, state: Intake
   }
   for (const flag of brief.automatedSafetyFlags) {
     if (flag.sourceResponseIds.some((id) => !responses.has(id))) throw new Error("Safety flag references a response outside the validated intake state.");
+  }
+  for (const guidance of brief.guidanceProvided) {
+    if (guidance.sourceResponseIds.some((id) => !responses.has(id))) throw new Error("Guidance record references a response outside the validated intake state.");
   }
   if (brief.sourceTraceability.length !== state.responses.length
     || brief.sourceTraceability.some((source) => responses.get(source.responseId) !== source.originalText)) {
