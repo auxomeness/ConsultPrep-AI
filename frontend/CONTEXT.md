@@ -129,13 +129,13 @@ Available npm scripts currently include:
 - npm run start
 - npm run lint
 
-There is currently no dedicated:
+The frontend now has these checks:
 
-- npm run test
+- npm run test:run
 - npm run test:e2e
 - npm run typecheck
 
-The project currently contains only the initial application route and has not yet implemented the ConsultPrep patient or clinician workflows.
+The project has a product introduction, a synthetic local-AI intake demo, and an information-state preview. It does not yet have authenticated patient sessions, database-backed intake persistence, a clinician workflow, or a production submission/handoff flow.
 
 The repository itself is the source of truth for:
 

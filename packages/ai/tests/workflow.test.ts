@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmPatientBrief, recordPatientCorrection } from "../src/workflow.js";
+import { applyIntakeTurn, confirmPatientBrief, recordPatientAnswer, recordPatientCorrection } from "../src/workflow.js";
 import { nextRequiredInterviewQuestion } from "../src/service.js";
 import type { IntakeState } from "../src/contracts.js";
 
@@ -20,6 +20,36 @@ const state: IntakeState = {
 };
 
 describe("patient correction and completion transitions", () => {
+  it("records an answer with source-linked extracted facts and applies the next AI turn", () => {
+    const openingState: IntakeState = {
+      schemaVersion: "1.0",
+      concern: "",
+      responses: [],
+      fields: [],
+      questionsAsked: ["What have you been feeling?"],
+      questionHistory: [{ questionId: "main_concern", targetField: "primary_concern", status: "asked", sourceResponseIds: [] }],
+      activeQuestionId: "main_concern",
+      completion: "in_progress",
+    };
+
+    const recorded = recordPatientAnswer(openingState, "I have a headache since this morning");
+    expect(recorded.responseId).toBe("response-1");
+    expect(recorded.state.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldId: "headache", status: "reported", sourceResponseIds: [recorded.responseId] }),
+      expect.objectContaining({ fieldId: "symptom_onset_headache", status: "reported", sourceResponseIds: [recorded.responseId] }),
+    ]));
+    expect(recorded.state.questionHistory?.[0]).toMatchObject({ status: "answered", sourceResponseIds: [recorded.responseId] });
+
+    const continued = applyIntakeTurn(recorded.state, {
+      askedQuestion: "Where is the headache?",
+      askedQuestionId: "headache_location",
+      fieldUpdates: [],
+    });
+    expect(continued.activeQuestionId).toBe("headache_location");
+    expect(continued.questionsAsked.at(-1)).toBe("Where is the headache?");
+    expect(continued.responses).toEqual(recorded.state.responses);
+  });
+
   it("keeps the original correction source and applies the corrected onset with its own source", () => {
     const corrected = recordPatientCorrection(state, "Correction: it started yesterday, not today");
     expect(corrected.responses[2]).toMatchObject({ correctsResponseId: "r2", text: "Correction: it started yesterday, not today" });

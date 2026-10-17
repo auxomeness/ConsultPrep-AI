@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,13 +17,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ConsultPrep AI | Prepare for your consultation",
   description:
-    "A frontend preview of an information-gathering aid for preparing for a healthcare consultation. It does not diagnose or prescribe.",
+    "A synthetic AMD AI demo for organizing information before a healthcare consultation. It does not diagnose or prescribe.",
   icons: {
     icon: "/consultprep-mark.svg",
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
@@ -48,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <span>ConsultPrep AI</span>
             </Link>
             <span className="hidden text-xs font-semibold uppercase tracking-wide text-muted sm:block">
-              Frontend preview
+              AMD AI demo
             </span>
           </div>
         </header>

@@ -10,6 +10,7 @@ export interface ChatRequestOptions {
   maxTokens?: number;
   temperature?: number;
   reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh";
+  signal?: AbortSignal;
 }
 
 interface ChatCompletionResponse {
@@ -27,8 +28,15 @@ export class AmdChatClient implements ChatCompleter {
   ) {}
 
   async complete(messages: ChatMessage[], options: ChatRequestOptions = {}): Promise<string> {
+    if (options.signal?.aborted) throw new AiServiceError("cancelled", "The AI request was cancelled.");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort();
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.config.timeoutMs);
     try {
       const response = await this.fetchImpl(`${this.config.baseUrl}/chat/completions`, {
         method: "POST",
@@ -68,10 +76,12 @@ export class AmdChatClient implements ChatCompleter {
       return content;
     } catch (error) {
       if (error instanceof AiServiceError) throw error;
-      if (controller.signal.aborted) throw new AiServiceError("timeout", "AMD inference request timed out.", { retryable: true });
+      if (options.signal?.aborted) throw new AiServiceError("cancelled", "The AI request was cancelled.");
+      if (timedOut) throw new AiServiceError("timeout", "AMD inference request timed out.", { retryable: true });
       throw new AiServiceError("provider_unavailable", "AMD inference could not be reached.", { retryable: true });
     } finally {
       clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abortFromCaller);
     }
   }
 }
