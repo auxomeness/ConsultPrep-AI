@@ -33,7 +33,6 @@ export default function ProductIntroduction() {
               onClick={() => storeLandingDraft(concern)}
               className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-6 py-3 text-center font-semibold text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus"
             >
-<<<<<<< Updated upstream
               Try the AMD AI intake
               <span aria-hidden="true">→</span>
             </Link>
@@ -66,21 +65,8 @@ export default function ProductIntroduction() {
         </h2>
         <p className="mt-3 leading-7 text-muted">
           ConsultPrep AI organizes what you share. It does not diagnose, prescribe, or replace professional medical judgment. A clinician has not reviewed this development demo.
-=======
-              Begin intake preview <span aria-hidden="true" className="ml-2">→</span>
-            </Link>
-          </div>
-        </section>
-
-        <p className="mx-auto mt-7 max-w-xl text-sm leading-6 text-muted">
-          ConsultPrep AI organizes information before a consultation. It does not diagnose, prescribe medication, or replace professional medical judgment.
->>>>>>> Stashed changes
         </p>
-        <details id="about" className="mx-auto mt-5 max-w-xl text-left text-sm leading-6 text-muted">
-          <summary className="mx-auto w-fit cursor-pointer rounded-md font-semibold text-accent underline-offset-4 hover:underline focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus">How this preview works</summary>
-          <p className="mt-3 rounded-2xl border border-line bg-elevated p-4">This preview checks text locally and shows synthetic examples. Nothing is sent to AI or a clinician. In the full workflow, a clinician would review the collected information.</p>
-        </details>
-      </div>
+      </section>
     </main>
   );
 }

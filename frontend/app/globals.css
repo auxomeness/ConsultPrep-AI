@@ -23,14 +23,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
-<<<<<<< Updated upstream
   --color-assistant-bubble: var(--assistant-bubble);
   --color-assistant-bubble-foreground: var(--assistant-bubble-foreground);
   --color-user-bubble: var(--user-bubble);
   --color-user-bubble-foreground: var(--user-bubble-foreground);
-=======
-  --color-elevated: var(--elevated);
->>>>>>> Stashed changes
   --color-field: var(--field);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
@@ -56,7 +52,6 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-<<<<<<< Updated upstream
 .typing-dot {
   animation: typing-bounce 900ms ease-in-out infinite;
 }
@@ -108,14 +103,5 @@ body {
   .typing-dot,
   .intake-chat {
     animation: none;
-=======
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
->>>>>>> Stashed changes
   }
 }
