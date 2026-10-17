@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,19 +16,25 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
 <<<<<<< HEAD
+<<<<<<< HEAD
   title: "Patient Intake | ConsultPrep AI",
   description: "Organize information to discuss with a healthcare professional.",
 =======
+=======
+>>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
   title: "ConsultPrep AI | Prepare for your consultation",
   description:
     "A frontend preview of an information-gathering aid for preparing for a healthcare consultation. It does not diagnose or prescribe.",
   icons: {
     icon: "/consultprep-mark.svg",
   },
+<<<<<<< HEAD
 >>>>>>> 4dbf67034c24251e0552d9a76b7cbd3d49f1d0af
+=======
+>>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"

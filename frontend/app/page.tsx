@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 "use client";
 
 import { useState, type FormEvent } from "react";
@@ -407,9 +408,14 @@ export default function Home() {
     </main>
   );
 =======
+=======
+>>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
 import ProductIntroduction from "@/components/patient/ProductIntroduction";
 
 export default function Home() {
   return <ProductIntroduction />;
+<<<<<<< HEAD
 >>>>>>> 4dbf67034c24251e0552d9a76b7cbd3d49f1d0af
+=======
+>>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
 }
