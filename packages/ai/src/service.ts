@@ -15,7 +15,7 @@ import {
 import { AiServiceError } from "./errors.js";
 import type { ChatCompleter, ChatMessage } from "./amd-client.js";
 import type { InMemoryRetriever, RetrievedChunk } from "./rag.js";
-import { assessSafety } from "./safety.js";
+import { assessSafety, DEFAULT_EMERGENCY_CONTACT, type EmergencyContactConfig } from "./safety.js";
 import { CONTINUE_OUTPUT_INSTRUCTIONS, QUESTION_ANSWER_INSTRUCTIONS, SYSTEM_INSTRUCTIONS } from "./prompts.js";
 import { classifyQuestionScope, isContextualFollowUp, isPersonalizedDiagnosisOrTreatmentRequest, OUT_OF_SCOPE_ANSWER, PERSONALIZED_MEDICAL_ANSWER } from "./scope.js";
 import { urgentGuidanceForText } from "./safety.js";
@@ -25,6 +25,7 @@ import { buildStructuredBrief } from "./brief.js";
 import { assessIntakeCompleteness } from "./completeness.js";
 import { classifyConversationIntent, type ConversationIntent } from "./conversation.js";
 import { assessPromptAssessmentNeed } from "./safety.js";
+import { interruptIntakeForSafety } from "./workflow.js";
 
 export interface AiService {
   startIntake(): StartIntakeResult;
@@ -69,7 +70,7 @@ export function nextRequiredInterviewQuestion(state: IntakeState): string | null
 }
 
 export function planNextQuestion(state: IntakeState): PlannedQuestion | null {
-  if (state.completion === "completed") return null;
+  if (state.completion === "completed" || state.completion === "emergency_interrupted" || state.safety?.routed) return null;
   const completeness = assessIntakeCompleteness(state);
   if (completeness.status === "potentially_urgent") return null;
   if (/^\s*(?:none|nothing|no symptoms|i have no symptoms|i don'?t have any symptoms)[.!\s]*$/i.test(state.responses[0]?.text ?? "")) return null;
@@ -244,7 +245,8 @@ function hasAnsweredCategory(state: IntakeState, category: InterviewCategory): b
   return /\b(cannot move|can't move|unable to move|unable to get up|can't get up|cannot get up|need to lie down|want to (?:lie|lay) down|can't do (?:my|usual) activities|cannot do (?:my|usual) activities|affecting my|affects my|hard to (?:walk|stand|move|work|sleep|eat)|interferes with|difficulty reading|can't read|cannot read|difficulty walking)\b/i.test(allResponses);
 }
 
-export function createAiService(client: ChatCompleter, retriever: InMemoryRetriever): AiService {
+export function createAiService(client: ChatCompleter, retriever: InMemoryRetriever, options: { emergencyContact?: EmergencyContactConfig } = {}): AiService {
+  const emergencyContact = options.emergencyContact ?? DEFAULT_EMERGENCY_CONTACT;
   return {
     startIntake() {
       const assistantMessage = "Hi. I’ll ask a few short questions to help organize what you’d like to discuss with a healthcare professional. What have you been feeling? Share only what you’re comfortable including.";
@@ -292,11 +294,21 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
     async continueIntake(rawInput, signal) {
       const input = ContinueIntakeInputSchema.parse(rawInput);
       const state = validateIntakeState(input.state);
+      if (state.completion === "emergency_interrupted" || state.safety?.routed) {
+        const safety = state.safety?.routed ? state.safety : assessSafety(state, emergencyContact);
+        const persistentSafety = safety.routed ? safety : {
+          routed: true,
+          ruleId: "emergency_interruption_persisted",
+          guidance: "This intake was interrupted for urgent medical guidance. Please contact emergency services or seek urgent medical help. This tool cannot assess or rule out an emergency.",
+          matchedResponseIds: state.responses.at(-1) ? [state.responses.at(-1)!.id] : [],
+        };
+        return { safety: persistentSafety, state: interruptIntakeForSafety(state, persistentSafety) };
+      }
       if (state.completion === "completed") {
         return NextTurnResultSchema.parse({ assistantMessage: "This intake is complete.", askedQuestion: null, askedQuestionId: null, fieldUpdates: [] });
       }
-      const safety = assessSafety(state);
-      if (safety.routed) return { safety, state: { ...state, safety, completion: "ready_for_review" } };
+      const safety = assessSafety(state, emergencyContact);
+      if (safety.routed) return { safety, state: interruptIntakeForSafety(state, safety) };
 
       const latest = input.latestResponseId
         ? state.responses.find((response) => response.id === input.latestResponseId)
@@ -408,7 +420,7 @@ export function createAiService(client: ChatCompleter, retriever: InMemoryRetrie
     async generateBrief(rawInput) {
       const input = GenerateBriefInputSchema.parse(rawInput);
       const state = validateIntakeState(input.state);
-      const safety = assessSafety(state);
+      const safety = assessSafety(state, emergencyContact);
       if (safety.routed) throw new AiServiceError("safety_routed", "Routine brief generation stopped by the safety-routing rule.");
       return buildStructuredBrief(state);
     },

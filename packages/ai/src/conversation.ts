@@ -21,7 +21,9 @@ export function classifyConversationIntent(input: {
   if (/^\s*(?:none|nothing|no|nope|nothing else|that's all|that is all|just what i said)[.!\s]*$/i.test(text)) return "continue";
   if (WORKFLOW_QUESTION.test(text) && /\b(?:with this|next steps?|after this|what happens|how does this intake work|who will review)\b/i.test(text)) return "workflow_question";
   if (GUIDANCE_REQUEST.test(text)) return "guidance_request";
-  if (/\b(?:i was wrong|i meant|to clarify|correction|actually,? i|that should be|i need to correct)\b/i.test(text)) return "correction";
+  if (/\b(?:i was wrong|i meant|to clarify|correction|actually,? i|that should be|i need to correct|i already (?:said|told you|answered)|i told you)\b/i.test(text)
+    || /\b(?:what do you mean|wtf do you mean|wdym)\b/i.test(text)
+      && /\b(?:started|began|since|ago|today|yesterday|this morning|last night|woke up)\b/i.test(text)) return "correction";
   if (/^\s*(?:i(?:'m| am) not comfortable answering|i(?:'d| would) rather not say|skip(?: this)?|prefer not to answer)\b/i.test(text)) return "decline";
   if (/^\s*(?:i don'?t know|not sure|unsure|unclear|what do you mean|i can'?t tell)\b/i.test(text)) return "unclear";
   if (/^\s*(?:who are you|what are you|are you (?:a doctor|a real person|human)|what can you do|how can you help)(?:\s+for me)?[?!.\s]*$/i.test(text)) return "identity_question";

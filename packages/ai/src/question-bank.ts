@@ -73,9 +73,9 @@ export const QUESTION_BANK: readonly QuestionDefinition[] = [
   categoryQuestion("general_energy", "general", "energy_and_self_care", "clarify_general_impact", 38, "How has your energy affected getting up or taking care of your usual needs?", ["weak", "fatigue", "tired", "low energy", "sleepy"]),
   categoryQuestion("general_weakness_type", "general", "weakness_description", "distinguish_energy_from_strength", 12, "When you say you feel weak, do you mean unusually tired or low on energy, or that your muscles feel weak and moving is difficult?", ["weak", "weakness"]),
 
-  categoryQuestion("headache_location", "headache_neurological", "symptom_location", "clarify_location", 17, "Where do you feel the headache, and does it stay there or move?", ["headache", "head pain", "migraine"]),
-  categoryQuestion("headache_character", "headache_neurological", "symptom_character", "describe_character", 19, "How would you describe the headache in your own words?", ["headache", "head pain", "migraine"]),
-  categoryQuestion("headache_severity", "headache_neurological", "symptom_severity", "describe_severity", 34, "How severe does it feel to you, and what does that prevent you from doing?", ["headache", "head pain", "migraine"], "severity_description"),
+  categoryQuestion("headache_location", "headache_neurological", "headache_location", "clarify_location", 17, "Where do you feel the headache, and does it stay there or move?", ["headache", "head pain", "migraine"]),
+  categoryQuestion("headache_character", "headache_neurological", "headache_character", "describe_character", 19, "How would you describe the headache in your own words?", ["headache", "head pain", "migraine"]),
+  categoryQuestion("headache_severity", "headache_neurological", "headache_severity", "describe_severity", 34, "How severe does it feel to you, and what does that prevent you from doing?", ["headache", "head pain", "migraine"], "severity_description"),
   categoryQuestion("headache_associated", "headache_neurological", "headache_associated_changes", "check_related_changes", 41, "Have you noticed any other changes along with the headache?", ["headache", "head pain", "migraine"], "free_text", true),
 
   categoryQuestion("digestive_location", "digestive", "symptom_location", "clarify_location", 17, "Where do you feel the discomfort, and does it stay in one place or move?", ["stomach", "abdominal", "belly", "nausea", "vomit", "diarrhea", "bowel"]),

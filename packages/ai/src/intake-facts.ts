@@ -24,12 +24,24 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
   const source = [response.id];
   const factStatus = response.correctsResponseId ? "patient_corrected" as const : "reported" as const;
 
+  // Keep details attached to the symptom that was actually being discussed.
+  // The patient's own wording remains the stored value and source evidence.
+  const detailTarget = activeQuestionId === "headache_location" ? "headache_location"
+    : activeQuestionId === "headache_character" ? "headache_character"
+      : activeQuestionId === "headache_severity" ? "headache_severity"
+        : activeQuestionId === "symptom_location" && detectHeadacheContext(response, activeQuestion) ? "headache_location"
+          : activeQuestionId === "symptom_character" && detectHeadacheContext(response, activeQuestion) ? "headache_character"
+            : activeQuestionId === "symptom_severity" && detectHeadacheContext(response, activeQuestion) ? "headache_severity" : null;
+  if (detailTarget && text.length >= 2 && !isUnknown(text) && !isDecline(text)) {
+    fields.push({ fieldId: detailTarget, value: normalizeLabel(text), status: factStatus, sourceResponseIds: source });
+  }
+
   if (activeQuestionId === "main_concern" && text.length >= 2) {
     fields.push({ fieldId: "primary_concern", value: normalizeLabel(text), status: factStatus, sourceResponseIds: source });
   }
 
   const symptomPatterns: Array<[string, string, RegExp]> = [
-    ["headache", "Headache", /\bheadaches?\b/i],
+    ["headache", "Headache", /\b(?:headaches?|migraines?)\b/i],
     ["nausea", "Nausea", /\bnauseous?\b|\bnausea\b/i],
     ["cough", "Cough", /\bcough(?:ing)?\b/i],
     ["sore_throat", "Sore throat", /\bsore throat\b/i],
@@ -98,13 +110,16 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
 
   const onset = extractOnset(text, target);
   const symptomOnsetQuestion = (activeQuestionId ?? response.questionBankId ?? "").match(/^symptom_onset__(.+)$/);
-  if (onset && !symptomOnsetQuestion) fields.push({ fieldId: "onset", value: onset, status: factStatus, sourceResponseIds: source });
+  // Preserve a general onset statement even when a grouped onset question was
+  // active. It does not imply that every symptom began at that time.
+  if (onset) fields.push({ fieldId: "onset", value: onset, status: factStatus, sourceResponseIds: source });
   if (symptomOnsetQuestion) {
     const symptomIds = symptomOnsetQuestion[1]!.split(",").filter(Boolean);
     const specificOnsets = extractNamedSymptomOnsets(text, symptomIds);
     const sharedOnset = extractOnset(text, "onset") ?? normalizeShortOnset(text);
     for (const symptomId of symptomIds) {
-      const symptomOnset = specificOnsets.get(symptomId) ?? (symptomIds.length === 1 || specificOnsets.size === 0 ? sharedOnset : null);
+      const explicitlyShared = /\b(?:all|both|they|these symptoms)\b[^.!?]{0,45}\b(?:started|began|at the same time|together)\b|\b(?:started|began)\b[^.!?]{0,35}\b(?:all together|at the same time)\b/i.test(text);
+      const symptomOnset = specificOnsets.get(symptomId) ?? (symptomIds.length === 1 || explicitlyShared ? sharedOnset : null);
       if (symptomOnset) fields.push({ fieldId: `symptom_onset_${symptomId}`, value: symptomOnset, status: factStatus, sourceResponseIds: source });
       else if (isDecline(text)) fields.push({ fieldId: `symptom_onset_${symptomId}`, value: null, status: "declined", sourceResponseIds: source });
       else if (isUnknown(text) || isDenial(text)) fields.push({ fieldId: `symptom_onset_${symptomId}`, value: null, status: "unknown", sourceResponseIds: source });
@@ -115,15 +130,15 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
   // onset statement remains a general patient report and is never copied to every symptom.
   if (onset) {
     const symptomIds = symptomIdsInText(text);
-    for (const symptomId of symptomIds) {
-      const named = extractNamedSymptomOnsets(text, [symptomId]).get(symptomId);
-      if (named) fields.push({ fieldId: `symptom_onset_${symptomId}`, value: named, status: factStatus, sourceResponseIds: source });
-    }
-    if (/\b(?:(?:these|my|the)\s+)?symptoms?\s+(?:started|began)|\bthey\s+(?:started|began)\b/i.test(text)) {
+    const explicitlyShared = /\b(?:all|both|they|these symptoms)\b[^.!?]{0,60}\b(?:started|began|at the same time|together)\b|\b(?:started|began)\b[^.!?]{0,45}\b(?:all together|at the same time)\b/i.test(text);
+    if (explicitlyShared) {
       for (const symptomId of symptomIds) {
-        if (!fields.some((field) => field.fieldId === `symptom_onset_${symptomId}`)) {
-          fields.push({ fieldId: `symptom_onset_${symptomId}`, value: onset, status: factStatus, sourceResponseIds: source });
-        }
+        fields.push({ fieldId: `symptom_onset_${symptomId}`, value: onset, status: factStatus, sourceResponseIds: source });
+      }
+    } else {
+      for (const symptomId of symptomIds) {
+        const named = extractNamedSymptomOnsets(text, [symptomId]).get(symptomId);
+        if (named) fields.push({ fieldId: `symptom_onset_${symptomId}`, value: named, status: factStatus, sourceResponseIds: source });
       }
     }
   }
@@ -212,9 +227,13 @@ export function factIsSufficient(field: IntakeField | undefined): boolean {
 
 function extractOnset(text: string, target: string): string | null {
   if (/\b(?:since|when) i (?:first )?(?:woke up|got up)(?: today)?\b/i.test(text)) return /\btoday\b/i.test(text) ? "Today, when patient woke up" : "When patient woke up";
-  const explicit = text.match(/\b(?:started|began|beginning|since)\s+(today|yesterday|this morning|last night|on\s+[a-z]+|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:hours?|days?|weeks?)\s+ago)\b/i);
-  if (explicit) return normalizeLabel(explicit[1]!);
-  const duration = text.match(/\b(?:for|over|in the past)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(hours?|days?|weeks?|months?)\b/i);
+  const amount = "(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)";
+  const units = "(?:seconds?|secs?|minutes?|mins?|hours?|days?|weeks?|months?)";
+  const explicit = text.match(new RegExp(`\\b(?:started|began|beginning|since)\\s+(today|yesterday|this morning|last night|on\\s+[a-z]+|${amount}\\s*${units}\\s+ago)\\b`, "i"));
+  if (explicit) return normalizeOnsetValue(explicit[1]!);
+  const volunteered = text.match(new RegExp(`\\b(?:just\\s+)?(${amount})\\s*(${units})\\s+ago\\b`, "i"));
+  if (volunteered) return `About ${normalizeLabel(volunteered[1]!)} ${normalizeDurationUnit(volunteered[2]!)} ago`;
+  const duration = text.match(new RegExp(`\\b(?:for|over|in the past)\\s+(${amount})\\s+(${units})\\b`, "i"));
   if (duration) return `For ${normalizeLabel(duration[1]!)} ${duration[2]!.toLowerCase()}`;
   if (target === "onset" && /^\s*(today|yesterday|this morning|last night|\d+\s+(?:hours?|days?|weeks?))\s*[.!]?\s*$/i.test(text)) return normalizeLabel(text.replace(/[.!]/g, ""));
   if (/\b(?:today|this morning|last night|yesterday)\b[^.!?]{0,40}\b(?:started|began|woke up)\b/i.test(text)) {
@@ -223,17 +242,33 @@ function extractOnset(text: string, target: string): string | null {
   return null;
 }
 
+function normalizeOnsetValue(value: string): string {
+  const duration = value.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(seconds?|secs?|minutes?|mins?|hours?|days?|weeks?|months?)\s+ago$/i);
+  return duration ? `About ${normalizeLabel(duration[1]!)} ${normalizeDurationUnit(duration[2]!)} ago` : normalizeLabel(value);
+}
+
+function normalizeDurationUnit(unit: string): string {
+  const normalized = unit.toLowerCase();
+  if (/^(?:sec|second)/.test(normalized)) return "seconds";
+  if (/^(?:min|minute)/.test(normalized)) return "minutes";
+  return normalized.replace(/s$/, "");
+}
+
+function detectHeadacheContext(response: PatientResponse, activeQuestion: string): boolean {
+  return /\b(headache|head pain|migraine|head)\b/i.test(`${response.text} ${activeQuestion}`);
+}
+
 function normalizeShortOnset(text: string): string | null {
   if (/\b(?:today|this morning|last night|yesterday|this afternoon|this evening|\d+\s+(?:hours?|days?|weeks?)\s+ago|(?:a|one)\s+(?:few\s+)?(?:hours?|days?|weeks?)\s+ago|when i woke up(?: today)?)\b/i.test(text)) return normalizeLabel(text);
   return null;
 }
 
 const SYMPTOM_TEXT_PATTERNS: Array<[string, RegExp]> = [
-  ["headache", /\bheadaches?\b/i], ["nausea", /\bnause(?:a|ous)\b/i], ["cough", /\bcough(?:ing)?\b/i],
+  ["headache", /\b(?:headaches?|migraines?)\b/i], ["nausea", /\bnause(?:a|ous)\b/i], ["cough", /\bcough(?:ing)?\b/i],
   ["sore_throat", /\bsore throat\b/i], ["runny_nose", /\brunny nose\b/i], ["cold_like_symptoms", /\b(?:common cold|cold symptoms|colds|a cold)\b/i], ["fever", /\b(?:feverish|fever|feeling hot|feel hot|i am hot|i'm hot)\b/i],
   ["weakness", /\bweak(?:ness)?\b|\bno energy\b/i], ["body_aches", /\bbody aches?\b|\bmuscle aches?\b/i],
   ["chills", /\b(?:chills?|shivering|feeling cold|feel cold)\b/i], ["stomach_pain", /\b(?:stomach|abdominal|belly)\s+(?:ache|pain|cramp)s?\b|\b(?:my\s+)?(?:stomach|belly)\s+hurts\b/i],
-  ["diarrhea", /\b(?:diarrh?ea|loose stools?)\b/i], ["eye_soreness", /\b(?:sore|painful|hurting|aching)\s+(?:my\s+)?eyes?\b|\beyes?\s+(?:are\s+)?(?:sore|painful|hurting)\b|\beye soreness\b/i],
+  ["diarrhea", /\b(?:diarrh?ea|loose stools?)\b/i], ["vomiting", /\b(?:vomit(?:ed|ing)?|threw up)\b/i], ["eye_soreness", /\b(?:sore|painful|hurting|aching)\s+(?:my\s+)?eyes?\b|\beyes?\s+(?:are\s+)?(?:sore|painful|hurting)\b|\beye soreness\b/i],
   ["visual_changes", /\b(?:blurry|blurred|double|loss of)\s+(?:vision|sight)\b|\bseeing blurry\b/i],
 ];
 

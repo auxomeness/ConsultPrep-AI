@@ -27,6 +27,23 @@ const URGENT_RULES: Array<{ id: string; pattern: RegExp }> = [
   { id: "synthetic_possible_heart_attack_or_stroke", pattern: /\b(am i having|i think i'?m having|having symptoms of)\s+(a\s+)?(heart attack|stroke)\b/i },
 ];
 
+export interface EmergencyContactConfig {
+  number: string;
+  region: string;
+}
+
+/** Philippine demo default; deployments should pass their verified local configuration. */
+export const DEFAULT_EMERGENCY_CONTACT: EmergencyContactConfig = { number: "911", region: "in the Philippines" };
+
+export function emergencyContactFromEnvironment(env: Record<string, string | undefined> = process.env): EmergencyContactConfig {
+  const number = env.CONSULTPREP_EMERGENCY_NUMBER?.trim() || DEFAULT_EMERGENCY_CONTACT.number;
+  const region = env.CONSULTPREP_EMERGENCY_REGION?.trim() || DEFAULT_EMERGENCY_CONTACT.region;
+  if (!/^[\d+*#()\s.-]{2,40}$/.test(number) || !/^[\p{L}\p{M}\d\s,.'()/-]{2,80}$/u.test(region)) {
+    return DEFAULT_EMERGENCY_CONTACT;
+  }
+  return { number, region };
+}
+
 function isNegatedOrHypothetical(text: string, matchIndex: number): boolean {
   const preceding = text.slice(Math.max(0, matchIndex - 45), matchIndex);
   return /\b(?:do not|don't|not|never|no|without)\b[^.!?]{0,25}$/i.test(preceding)
@@ -55,20 +72,52 @@ function hasUnnegatedMatch(text: string, pattern: RegExp): boolean {
   return false;
 }
 
-export function assessSafety(state: Pick<IntakeState, "responses">): SafetyEvent {
+export function assessSafety(state: Pick<IntakeState, "responses">, emergencyContact: EmergencyContactConfig = DEFAULT_EMERGENCY_CONTACT): SafetyEvent {
   for (const response of state.responses) {
     const ruleId = findUrgentRule(response.text);
     if (ruleId) {
-      const guidance = urgentGuidanceForRule(ruleId);
+      const guidance = urgentGuidanceForRule(ruleId, emergencyContact);
       return { routed: true, ruleId, guidance, matchedResponseIds: [response.id] };
     }
   }
   const combined = state.responses.map((response) => response.text).join("\n");
   const combinedRuleId = findUrgentRule(combined);
   if (combinedRuleId) {
-    return { routed: true, ruleId: combinedRuleId, guidance: urgentGuidanceForRule(combinedRuleId), matchedResponseIds: state.responses.map((response) => response.id) };
+    return { routed: true, ruleId: combinedRuleId, guidance: urgentGuidanceForRule(combinedRuleId, emergencyContact), matchedResponseIds: state.responses.map((response) => response.id) };
+  }
+  const headacheRisk = headacheEmergencyEvidence(state.responses);
+  if (headacheRisk) {
+    return { routed: true, ruleId: headacheRisk.ruleId, guidance: urgentGuidanceForRule(headacheRisk.ruleId, emergencyContact), matchedResponseIds: headacheRisk.matchedResponseIds };
   }
   return { routed: false, ruleId: null, guidance: null, matchedResponseIds: [] };
+}
+
+function headacheEmergencyEvidence(responses: IntakeState["responses"]): { ruleId: string; matchedResponseIds: string[] } | null {
+  const findSources = (pattern: RegExp, associateWithHeadache = false) => new Set(responses.flatMap((response) => {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(response.text);
+    if (!match || isNegatedOrHypothetical(response.text, match.index)) return [];
+    if (associateWithHeadache && !/\b(?:headache|head pain|migraine|crushing\s+(?:my\s+)?skull)\b/i.test(response.text)
+      && !/^headache_(?:character|severity)$/.test(response.questionBankId ?? "")
+      && !(response.questionBankId?.startsWith("symptom_onset__") && response.questionBankId.includes("headache"))) return [];
+    return [response.id];
+  }));
+  const headache = findSources(/\b(?:headache|head pain|migraine)\b/i);
+  const severe = findSources(/\b(?:crushing(?:\s+my)?\s+(?:skull|head)|worst(?:\s+ever)?\s+headache|severe|extreme(?:ly)?|unbearable|intense)\b/i, true);
+  const weakness = findSources(/\b(?:weak(?:ness)?|unable to move|can'?t move|difficulty moving)\b/i);
+  const vomiting = findSources(/\b(?:vomit(?:ed|ing)?|threw up)\b/i);
+  const sudden = findSources(/\b(?:sudden(?:ly)?|abrupt(?:ly)?)\b/i, true);
+  if (!headache.size || !severe.size) return null;
+  const hasWeakness = weakness.size > 0;
+  const hasVomiting = vomiting.size > 0;
+  const hasSudden = sudden.size > 0;
+  if (!hasWeakness && !hasVomiting && !hasSudden) return null;
+  const ruleId = hasWeakness && hasVomiting
+    ? "severe_headache_with_weakness_and_vomiting"
+    : hasSudden ? "sudden_severe_headache"
+      : "severe_headache_with_associated_symptom";
+  const relevant = [headache, severe, ...(hasWeakness ? [weakness] : []), ...(hasVomiting ? [vomiting] : []), ...(hasSudden ? [sudden] : [])];
+  return { ruleId, matchedResponseIds: [...new Set(relevant.flatMap((sources) => [...sources]))] };
 }
 
 /** A non-diagnostic prompt-assessment signal; it never labels the case an emergency. */
@@ -81,13 +130,19 @@ export function assessPromptAssessmentNeed(state: Pick<IntakeState, "responses" 
   return worsening && weakness && (impact || explicitMuscleDifficulty);
 }
 
-export function urgentGuidanceForText(text: string): string | null {
+export function urgentGuidanceForText(text: string, emergencyContact: EmergencyContactConfig = DEFAULT_EMERGENCY_CONTACT): string | null {
   const ruleId = findUrgentRule(text);
   if (!ruleId) return null;
-  return urgentGuidanceForRule(ruleId);
+  return urgentGuidanceForRule(ruleId, emergencyContact);
 }
 
-function urgentGuidanceForRule(ruleId: string): string {
+function urgentGuidanceForRule(ruleId: string, emergencyContact: EmergencyContactConfig = DEFAULT_EMERGENCY_CONTACT): string {
+  if (ruleId === "severe_headache_with_weakness_and_vomiting") {
+    return `I’m concerned about the severe headache you described, together with weakness and vomiting. These symptoms can be serious and need urgent medical assessment. Please call ${emergencyContact.number} ${emergencyContact.region} now, or ask someone nearby to call for you. You can also have someone help you get to the nearest hospital emergency department immediately. Do not drive yourself if you feel weak or severely unwell. Please don’t wait to finish this questionnaire before getting help. This tool cannot assess or rule out an emergency.`;
+  }
+  if (ruleId === "severe_headache_with_associated_symptom" || ruleId === "sudden_severe_headache") {
+    return `I’m concerned about the severe headache you described${ruleId === "severe_headache_with_associated_symptom" ? " together with another symptom" : " with a sudden onset"}. This can need urgent medical assessment. Please contact ${emergencyContact.number} ${emergencyContact.region} now or seek urgent medical care. Ask someone nearby to help, and do not drive yourself if you feel unwell. Please don’t wait to finish this questionnaire before getting help. This tool cannot assess or rule out an emergency.`;
+  }
   if (ruleId === "eye_symptoms_with_visual_change_requires_urgent_assessment") {
     return "I’m sorry you’re dealing with this. Eye soreness together with a change in vision should be assessed urgently by an eye-care professional today. If you have sudden vision loss, severe eye pain, or an eye injury, seek emergency medical care now. I’m stopping the intake so you can focus on getting help.";
   }
@@ -95,13 +150,13 @@ function urgentGuidanceForRule(ruleId: string): string {
     return "I’m sorry you’re experiencing this. Sudden vision loss, severe eye pain, or an eye injury needs immediate medical attention. Please seek emergency care now or ask someone nearby to help you. I’m stopping the intake so you can focus on getting help.";
   }
   if (ruleId === "shortness_of_breath_with_palpitations") {
-    return "I’m sorry you’re experiencing this. Shortness of breath together with a racing or fluttering heartbeat needs urgent medical attention. Please call your local emergency number now, or ask someone nearby to call and stay with you. Don’t drive yourself. I’m stopping the intake so you can focus on getting help.";
+    return `I’m sorry you’re experiencing this. Shortness of breath together with a racing or fluttering heartbeat needs urgent medical attention. Please call ${emergencyContact.number} ${emergencyContact.region} now, or ask someone nearby to call and stay with you. Don’t drive yourself. I’m stopping the intake so you can focus on getting help.`;
   }
   if (ruleId === "new_confusion_or_loss_of_consciousness" || ruleId === "severe_or_sudden_weakness") {
-    return "I’m sorry this is happening. Sudden confusion, loss of consciousness, or sudden severe weakness needs immediate medical attention. Please contact local emergency services now or ask someone nearby to help. I’m stopping the intake so you can focus on getting help.";
+    return `I’m sorry this is happening. Sudden confusion, loss of consciousness, or sudden severe weakness needs immediate medical attention. Please call ${emergencyContact.number} ${emergencyContact.region} now or ask someone nearby to help. I’m stopping the intake so you can focus on getting help.`;
   }
   if (ruleId === "reported_inability_to_move") {
-    return "I’m sorry you’re feeling this unwell. If you are physically unable to move, especially if this began suddenly, ask someone nearby to contact your local emergency service now. If you mean you feel too weak to get up, seek urgent medical help now. I’m stopping the intake so you can focus on getting help.";
+    return `I’m sorry you’re feeling this unwell. If you are physically unable to move, especially if this began suddenly, ask someone nearby to call ${emergencyContact.number} ${emergencyContact.region} now. If you mean you feel too weak to get up, seek urgent medical help now. I’m stopping the intake so you can focus on getting help.`;
   }
-  return "I’m sorry you’re dealing with this. What you’ve described may need urgent medical attention. Please contact local emergency services or seek urgent medical help now; don’t wait to finish this chat. I’m stopping the intake so you can focus on getting help. This tool can’t assess or rule out an emergency.";
+  return `I’m sorry you’re dealing with this. What you’ve described may need urgent medical attention. Please contact local emergency services by calling ${emergencyContact.number} ${emergencyContact.region}, or seek urgent medical help now; don’t wait to finish this chat. I’m stopping the intake so you can focus on getting help. This tool can’t assess or rule out an emergency.`;
 }
