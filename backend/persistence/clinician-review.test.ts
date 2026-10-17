@@ -72,6 +72,14 @@ test("case list and detail are scoped to the assigned clinician", async () => {
   await assert.rejects(listClinicianCases(db, { userId: clinicianId, role: "patient" }), { code: "FORBIDDEN" });
 });
 
+test("assigned clinician opens the brief with its original response references", async () => {
+  const db = new MemoryReviewDb();
+  const review = await getClinicianCaseReview(db, clinician, caseId);
+  assert.equal(review.brief.id, briefId);
+  assert.equal(review.brief.sourceReferences[0]?.patientResponseId, responseId);
+  assert.equal(review.responses.find((response) => response.id === responseId)?.responseText, "Synthetic source");
+});
+
 test("saving a revision appends a snapshot and moves the case into review", async () => {
   const db = new MemoryReviewDb();
   const edited = { concern: "Clinician wording", unknowns: ["duration"] };
@@ -108,4 +116,21 @@ test("unauthorized clinician cannot save a revision", async () => {
     actor: { userId: otherClinicianId, role: "clinician" }, caseId, briefData: { concern: "Not allowed" },
   }), { code: "NOT_FOUND" });
   assert.equal(db.review.revisions.length, 0);
+});
+
+test("unauthorized clinician cannot finalize a case", async () => {
+  const db = new MemoryReviewDb();
+  await saveClinicianDraft(db, { actor: clinician, caseId, briefData: { concern: "Reviewed" } });
+  await assert.rejects(finalizeClinicianCase(db, {
+    actor: { userId: otherClinicianId, role: "clinician" }, caseId,
+  }), { code: "NOT_FOUND" });
+  assert.equal(db.review.consultationCase.status, "under_clinician_review");
+  assert.equal(db.review.revisions.length, 1);
+});
+
+test("malformed brief data is rejected without creating a revision", async () => {
+  const db = new MemoryReviewDb();
+  await assert.rejects(saveClinicianDraft(db, { actor: clinician, caseId, briefData: ["not", "an", "object"] }), { code: "INVALID_REQUEST" });
+  assert.equal(db.review.revisions.length, 0);
+  assert.equal(db.review.consultationCase.status, "submitted");
 });
