@@ -2,7 +2,7 @@
 
 ## What is implemented
 
-- `consultation_briefs` stores versioned JSON objects separately from clinician revisions. The exact field-level brief schema remains pending Developer 1's actual structured-output contract; `schema_version` is required so the application can validate and migrate that contract without treating arbitrary JSON as clinically valid.
+- `consultation_briefs` stores versioned JSON objects separately from clinician revisions. The standalone AI package defines structured brief schema version `1.0`; the field-to-column/reference mapping and integration validation still need implementation. `schema_version` allows the application to reject unsupported or malformed data instead of treating arbitrary JSON as valid.
 - `brief_source_references` stores field paths, source response IDs, and optional excerpts. Composite foreign keys require the brief and response to belong to the same intake. Submission rechecks that every referenced response exists in that intake, and verifies the source links on read-back.
 - Patient corrections append a new `patient_responses` record whose `supersedes_response_id` points to the earlier response. The prior statement is retained. Corrections are accepted only before patient confirmation. The application must then update/revalidate the proposed brief and source links before the patient confirms it.
 - Submission is expressed as a single transaction through `ConsultationPersistenceDatabase`. The adapter contract requires locking the intake row, writing the case, status transition, and receipt atomically, and reading the records back before commit.
@@ -29,7 +29,7 @@ The unit tests use an in-memory transaction adapter. They verify append-only cor
 
 ## Remaining integration work
 
-1. Agree with Developer 1 on the actual brief object, source-reference format, validation behavior, and schema version.
+1. Agree with Developer 1 on mapping the AI package's brief object, source identifiers, validation behavior, and schema version into these persistence tables.
 2. Implement the transaction adapter using the agreed database access layer and the server-verified Supabase identity.
 3. Ensure writes to briefs and source references occur as one transaction, and only validated structured outputs are marked `draft` or `patient_confirmed`.
 4. Add route/server-action request validation and call this service only after explicit patient confirmation.

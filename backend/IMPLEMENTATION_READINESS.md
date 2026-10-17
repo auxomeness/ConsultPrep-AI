@@ -1,44 +1,36 @@
-# ConsultPrep AI — Implementation Readiness
+# ConsultPrep AI — implementation readiness
 
 ## Repository assessment
 
-- **Application framework:** `frontend/` is a Next.js 16.4.2 app using React 19.3 and TypeScript 5.
-- **Routing:** Next.js App Router (`frontend/app`). No API route handlers or server actions exist yet.
-- **Current implementation:** `frontend/app/page.tsx` is the unmodified create-next-app starter page. Layout and global styles are also starter defaults. No patient intake or clinician workflow is implemented.
-- **Dependencies and scripts:** Tailwind CSS 4 and ESLint are configured. The only scripts are `dev`, `build`, `start`, and `lint`. There are no Zod, Supabase, Drizzle, authentication, or test dependencies configured.
-- **Database and authentication:** No Supabase client/configuration, schema, migration, database connection, auth flow, or authorization code was found. No `.env` files were found. The frontend `.gitignore` ignores env files.
-- **AI integration:** No AI client or application API contract is present in the code. `DEV1.md` describes Developer 1's ownership but contains planning instructions, not an implemented integration or verified request/response contract.
-- **UI conventions:** No existing product components or design system are present. The frontend workspace guidance assigns backend/API/auth/database ownership to Developer 2 and asks that its React/Next.js foundation not be replaced.
-- **Backend folder:** Newly created and empty before this checklist. No migrations, routes, or backend implementation existed.
-- **Working tree:** `git status` reported a clean branch (`Dev2/backend`) before this checklist was added.
+- **Application:** `frontend/` is Next.js 16.4.2 with React 19.3, TypeScript 5, Tailwind CSS 4, and the App Router. It contains patient and clinician UI previews; they use local state and do not call application APIs or persist data.
+- **Frontend scripts:** lint, typecheck, Vitest, Playwright, build, and start scripts are defined in `frontend/package.json`.
+- **AI package:** `packages/ai/` is a separate TypeScript package with Zod contracts, local Qwen intake, project-guidance retrieval, safety heuristics, and an optional AMD client. It is not connected to frontend routes or persistence.
+- **Backend artifacts:** `backend/` contains Drizzle schema definitions, three SQL migrations, synthetic seed and RLS SQL, authorization helpers, lifecycle/persistence/review contracts, and Node test suites. It is not a deployable server package: there are no application routes, Supabase client, or concrete database query/transaction adapter.
+- **Authentication/database:** Auth policies and migration files are present but no Supabase project is configured, no migration has been applied in this report, and no live auth/RLS/persistence operation has been verified.
+- **Integration status:** the AI package has versioned schemas and an actual standalone service, but application API integration, server-side identity enforcement, durable session state, and safety UI routing remain outstanding.
 
 ## Readiness checklist
 
-Status meanings: **Confirmed** means directly supported by repository contents; **Requires verification** means external facts, credentials, or implementation details are unavailable; **Design decision** means the team/project owner must choose or approve a direction.
-
 | Area | Status | Finding / next action |
 |---|---|---|
-| Hackathon requirements and track eligibility | Requires verification | The project documents warn that AMD Token Factory use may not satisfy a self-hosted vLLM or Evolus requirement. Confirm the selected track and mandatory integrations from official event rules before claiming eligibility. |
-| AMD Token Factory account access | Requires verification | No credential or successful API experiment is present. Developer 1 must verify access without committing credentials. |
-| AMD endpoint, model, authentication, and request/response format | Requires verification | No endpoint or model has been verified in this repository. Use Developer 1's observed integration handoff; do not invent an interface. |
-| Structured intake and source-reference schema | Requires verification | The repository contains conceptual requirements only. Agree on a versioned schema and source-reference shape with Developer 1 before wiring persistence or UI to it. |
-| AI conversation and safety acceptance criteria | Requires verification | Requirements are described in project documents, but no concrete shared safety-routing contract or verified scenarios are implemented. Agree on events and synthetic scenarios with Developers 1 and 3. |
-| Patient workflow | Confirmed — missing | Only the starter page exists. The consent/limitations introduction, intake conversation, review/correction, confirmation, and truthful submission states remain to be built. |
-| Clinician workflow | Prototype and service contract present | `/clinician` is a synthetic UI demo; backend review operations and guard tests are present. Authentication routes, database adapter, durable write verification, and live RLS testing remain unimplemented. |
-| Authentication and authorization | Design decision | No mechanism exists. Choose the minimum demonstration auth and role/ownership model; server-side checks are required. If Supabase Auth is selected, define the identity-to-patient/clinician mapping and RLS approach. |
-| Supabase PostgreSQL schema and migration strategy | Design decision | No database or migrations exist. Confirm Supabase project/connection ownership and the Drizzle-vs-Supabase-client boundary, then agree on lifecycle statuses and core entities before creating migrations. |
-| Synthetic test scenarios | Requires verification | No fixtures or tests exist. Define routine, skipped/unknown, correction, contradiction, urgent-routing, malformed AI output, persistence failure, duplicate submission, and unauthorized-access scenarios with Developer 3. |
-| Deployment and submission requirements | Requires verification | No deployment configuration or confirmed event packaging requirements exist. Confirm hosting, environment configuration, container, repository visibility, and demonstration requirements. |
+| Hackathon requirements and track eligibility | Requires verification | Check the selected track's official requirements. AMD Token Factory use may not satisfy a separate self-hosted vLLM or Evolus requirement. |
+| AMD Token Factory account access | Requires verification | No credential or successful API experiment is recorded. Verify access without committing credentials. |
+| AI contract | Partial | The standalone package defines versioned contracts and source IDs. Agree on mapping those schemas to persistence, statuses, and application routes with the team. |
+| AI safety behavior | Partial / requires coordination | Heuristics exist, but the application has no integrated, clinically validated safety-routing workflow. Agree on events and synthetic scenarios with Developers 1 and 3. |
+| Patient workflow | Preview only | `/intake` and `/intake/states` are UI previews. API calls, persistence, and browser-level workflow verification remain outstanding. |
+| Clinician workflow | Preview and contracts present | `/clinician` is synthetic UI; backend operations and guard tests exist. Authenticated routes, DB adapter, durable writes, and live RLS verification remain outstanding. |
+| Authentication and authorization | Not integrated | Choose/confirm identity provisioning and connect Supabase Auth to server-side ownership and clinician assignment checks. |
+| Database schema and migration strategy | Artifacts present / live DB unverified | Drizzle schema and three SQL migrations exist. Apply to a disposable local database and validate the contracts before any staging use. |
+| Synthetic test scenarios | Partial | Backend contract tests exist; browser, live DB, real auth/RLS, AI integration, and safety UI tests remain outstanding. See `TEST_REPORT.md`. |
+| Deployment | Not configured | No root workspace, container, CI/CD pipeline, migration runner, or production environment is configured. |
 
-## Smallest end-to-end milestone
+## Recommended next sequence
 
-After the shared AI contract and credentials are available, implement one server-side patient-response operation that validates a synthetic request, calls Developer 1's actual AI service, validates its response, and returns the next step while preserving the intake state on failure. Then add persistence and authorization before expanding to confirmed submission and clinician finalization. A mock can support UI development only if clearly labeled; it cannot establish real integration success.
+1. Agree on AI schema/status/source mapping and safety events with Developers 1 and 3.
+2. Apply migrations to a disposable local Supabase project and execute the seed and RLS script.
+3. Implement Supabase Auth and server-side application routes with ownership and assignment checks.
+4. Add a concrete transaction adapter and verify persistence, duplicate submission, and read-back against PostgreSQL.
+5. Connect the patient/clinician previews to those routes and the actual AI package; add browser and integration tests.
+6. Configure deployment only after auth, persistence, safety routing, and secret handling are verified.
 
-## Immediate dependencies
-
-1. Developer 1's implemented, verified AI service interface, structured schema, source-reference format, and safety/error contract.
-2. Project-owner confirmation of available Supabase project credentials and the intended demo identity/role setup.
-3. Project-owner or team confirmation of the hackathon track's mandatory infrastructure and integration rules.
-4. Developer 3's agreed patient/clinician acceptance scenarios and safety UI wording.
-
-No application code or database migration has been added in this readiness pass.
+See [SETUP_AND_HANDOFF.md](../SETUP_AND_HANDOFF.md) for exact current commands and limitations. This assessment does not claim any database migration was applied or any live integration works.

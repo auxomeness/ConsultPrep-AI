@@ -2,7 +2,7 @@
 
 ## Model status and boundaries
 
-This is a proposed v1 application-persistence model based on the product documents. The Developer 1 structured brief, source-reference and safety contracts, the final status vocabulary, and the team identity/authorization model have not yet been delivered or agreed in repository artifacts. Align those contracts before connecting the schema to production application flows. This migration is not evidence that any database is configured or has been changed.
+This is a proposed v1 application-persistence model based on the product documents. The standalone `packages/ai/` package now defines a versioned structured brief contract (`schemaVersion: "1.0"`), source identifiers, and safety events. The mapping of that AI contract into these tables, final application status vocabulary, and identity/authorization model still needs team agreement and implementation. These migration files are not evidence that a database is configured or has been changed.
 
 The model includes:
 

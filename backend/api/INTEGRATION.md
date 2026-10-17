@@ -2,9 +2,9 @@
 
 ## Status and evidence
 
-No Developer 1 AI service implementation, exported server function, route, package, structured output schema, safety event, or observed request/response example exists in this repository. `DEV1.md` is a requirements handoff only. No AMD credentials or service configuration are present. Therefore the actual Developer 1 service integration and success-response contract cannot yet be implemented or verified.
+The standalone Developer 1 AI package exists in `packages/ai/`. It exports a server-side service and versioned Zod contracts, with local Qwen intake and an optional AMD client. It is not currently imported by a Next.js route or connected to authenticated session storage or database persistence. Thus the package contract can be inspected, but the complete application integration and end-to-end success response cannot yet be exercised. No AMD credentials are present.
 
-This folder adds a **provisional application-side input contract** and safe error/timeout primitives. It does not define or impersonate the Developer 1 AI interface. There is no AI endpoint, provider URL, request builder, response parser, authentication bypass, or mock AI response in this change.
+This folder defines a **provisional application-side input contract** and safe error/timeout primitives. It does not define or impersonate the AI package interface. There is no application AI endpoint or adapter connecting the package, no authenticated route, and no persistence transaction adapter in this change.
 
 ## Current artifacts
 
@@ -63,9 +63,9 @@ No privileged key may be sent to the browser. Do not retry automatically until t
 
 The shared authorization guards are policy functions, not authentication. A future route must verify the current Supabase user server-side, resolve `profiles.role`, query the target resource, and then call the guards. No API route or Supabase SSR client currently exists, so there is no live authenticated operation to exercise. Do not add a service-role route without those checks.
 
-## Contract required from Developer 1
+## Integration work remaining
 
-Before connecting a provider, obtain the implemented code/import path and verify:
+Before connecting the package to an application route, inspect its actual exports and verify:
 
 - start/continue conversation behavior and state ownership;
 - exact input and output types, schema version, and whether outputs use Zod or JSON Schema;
@@ -74,6 +74,8 @@ Before connecting a provider, obtain the implemented code/import path and verify
 - timeout, unavailable, rate-limit, and malformed-output errors;
 - whether requests are stateless and idempotent, and how retries are safe;
 - API key/base URL/model configuration variable names and server-only handling;
-- synthetic examples and actual observed provider test results.
+- synthetic examples and observed local/optional provider test results.
+
+The package's structured brief schema is in `packages/ai/src/contracts.ts`; its service entry points are in `packages/ai/src/service.ts`. Map that schema and its source identifiers into the application persistence model rather than inventing a parallel AI contract. The package currently has no application-owned session persistence, and its safety heuristics are not a validated triage system.
 
 The application success-response schema, provider adapter, route, and full integration tests remain blocked until this concrete handoff is available. No provider call was made and no external service was configured by this deliverable.

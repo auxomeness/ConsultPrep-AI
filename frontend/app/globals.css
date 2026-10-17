@@ -1,27 +1,6 @@
 @import "tailwindcss";
 
 :root {
-<<<<<<< HEAD
-<<<<<<< HEAD
-  --ink: #1d2a35;
-  --muted: #63717c;
-  --line: #dce4e8;
-  --paper: #ffffff;
-  --canvas: #f4f7f6;
-  --teal: #16796f;
-  --teal-dark: #11635b;
-  --teal-soft: #e7f3f0;
-  --amber: #fff7e9;
-  --amber-line: #eddbb8;
-  --error-soft: #fff0ef;
-}
-
-@theme inline {
-  --color-background: var(--canvas);
-  --color-foreground: var(--ink);
-=======
-=======
->>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
   --background: #f5f8f6;
   --surface: #ffffff;
   --field: #ffffff;
@@ -51,16 +30,10 @@
   --color-preview: var(--preview);
   --color-preview-foreground: var(--preview-foreground);
   --color-error: var(--error);
-<<<<<<< HEAD
->>>>>>> 4dbf67034c24251e0552d9a76b7cbd3d49f1d0af
-=======
->>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--canvas); color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
 button, textarea, input { font: inherit; }
@@ -289,9 +262,6 @@ textarea:focus, input:focus-visible { border-color: #4d9b8d; outline: 3px solid 
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
-=======
-=======
->>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #101d17;
@@ -314,8 +284,4 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-<<<<<<< HEAD
->>>>>>> 4dbf67034c24251e0552d9a76b7cbd3d49f1d0af
-=======
->>>>>>> 6b3f68ceb2e593539a7edac22d964767d4269e60
 }
