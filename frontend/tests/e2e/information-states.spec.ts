@@ -3,11 +3,22 @@ import { expect, test } from "@playwright/test";
 const stateLabels = ["Reported", "Unknown", "Not answered", "Unclear", "Conflicting"];
 
 test("the separate synthetic information-state preview is reachable and preserves distinctions", async ({ page }) => {
+<<<<<<< Updated upstream
   await page.goto("/intake/states");
+=======
+  await page.goto("/intake");
+  await expect(page.getByText(/Leaving this page clears the local response drafts/)).toBeVisible();
+  const openPreview = page.getByRole("link", { name: "View information states" });
+  await openPreview.focus();
+  await expect(openPreview).toBeFocused();
+  expect(await openPreview.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
+  await openPreview.press("Enter");
+
+>>>>>>> Stashed changes
   await expect(page).toHaveURL(/\/intake\/states$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Information-state preview");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Information states");
   await expect(page.getByText(/Synthetic UI-development preview/)).toBeVisible();
-  await expect(page.getByText(/These five labels match Member 1/)).toBeVisible();
+  await expect(page.getByText(/These five answer labels use the current information-status vocabulary/)).toBeVisible();
   for (const label of stateLabels) {
     await expect(page.getByRole("article", { name: label })).toBeVisible();
   }

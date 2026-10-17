@@ -1,6 +1,6 @@
-# Frontend test plan through Phase 8
+# Frontend test plan through Phase 9
 
-Status: automated checks for the **frontend development preview** through one synthetic follow-up, an information-state gallery, and a contract-shaped patient review preview. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
+Status: automated checks for the **frontend development preview** through one synthetic follow-up, an information-state gallery, and a contract-shaped patient review preview. Phase 9 adds a one-time landing draft handoff, navigation, palette, and reduced-motion checks. All input and examples are synthetic. These checks do not pass the full product acceptance criteria or prove an integrated intake.
 
 ## Scope and environment
 
@@ -107,3 +107,13 @@ The review component uses Member 1 v1.0 types, while the route uses a manual syn
 The Phase 8 run passed 21/21 frontend component tests, 15/15 Chromium tests outside the sandbox, 136/136 Member 1 tests, and 6/6 Member 2 contract tests. `npm run lint` and `npm run typecheck` passed. Three standard Turbopack builds outside the sandbox passed, with no recurrence of QA-001; the defect remains open. The first sandboxed browser command built but its local server did not become reachable, so it was interrupted and rerun outside the sandbox. See [Phase 8 evidence](phase-8-patient-review-provenance.md).
 
 No test reaches a real session, response save, AI inference, review retrieval, correction save, confirmation, submission, database, or authenticated route. Add those tests only when Member 2 supplies the operations and shared contracts; do not count current fixtures as integrated coverage.
+
+## Phase 9 UI and workflow coverage (2026-10-17)
+
+The landing page accepts an optional made-up concern and passes it through `sessionStorage` once to `/intake`. This is a browser-tab handoff, not persistence. Chromium checks exact text on arrival, its absence after reload, and no non-GET request. The landing action and intake notice explicitly label the route as a preview.
+
+The browser suite also checks primary navigation's current-page indication, the visible landing field and action, the conversation and review source interactions, and horizontal overflow at 375, 768, and 1280px. A targeted palette test checks foreground/background, muted/background, white/teal action, and preview-notice token contrast against 4.5:1, plus reduced transition duration under `prefers-reduced-motion`. The existing state-gallery test checks rendered meaning text contrast against its surface. These are targeted checks, not a complete accessibility audit.
+
+No clinician route or connected clinician API exists to exercise in Playwright. Member 2's authorization guards and contract parser can be tested as pure Node functions; they do not prove authenticated browser access, case retrieval, save, or finalization. No real frontend AI-pending signal exists, so no AI-working animation or test was added.
+
+Final Phase 9 run: `npm run lint` and `npm run typecheck` passed; `npm run test:run` passed 21/21 component tests; `npm run test:e2e` passed 17/17 Chromium tests, including its Webpack build, outside the sandbox. Member 1 typecheck and 136/136 tests passed; Member 2 parser and authorization tests passed 13/13. Three consecutive standard Turbopack builds outside the sandbox passed (3/3), and one final build after the last copy change passed; QA-001 remains open due to prior intermittent failures. The first sandboxed Webpack build failed with `EPERM` creating a `.next` prerender directory. See [Phase 9 evidence](phase-9-ui-ux-clinician.md).

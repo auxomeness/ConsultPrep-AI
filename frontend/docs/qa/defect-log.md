@@ -1,6 +1,6 @@
 # Frontend defect log
 
-All repro data is synthetic. Status and retest results include the Phase 8 checks on the local Windows host.
+All repro data is synthetic. Status and retest results include the Phase 9 checks on the local Windows host.
 
 ## QA-001 — Standard Turbopack production build intermittently fails to start a loader worker
 
@@ -16,7 +16,7 @@ All repro data is synthetic. Status and retest results include the Phase 8 check
 | Owner | Member 3 frontend build/tooling investigation; suspected Next.js/Turbopack worker or local process environment, not assigned to Members 1 or 2. Upstream or Windows specificity is unconfirmed. |
 | Evidence | Phase 5 command outputs for `npm run build` and `npm run test:e2e` before the Webpack test-script change. The failure persisted outside sandbox and after replacing the Tailwind-only Turbopack loader. Webpack compiles the same TSX. |
 | Status | Open. No speculative framework downgrade or permanent Compiler disablement was retained. |
-| Retest result | Phase 6: three consecutive `npm run build` attempts outside the sandbox passed (3/3; 0 failures). Phase 7: three more consecutive outside-sandbox attempts passed (3/3; 0 failures). Phase 8: three outside-sandbox standard builds passed (3/3; 0 failures), including a final build after the review UI changes; the original loader-worker failure did not recur. Earlier same-host attempts failed intermittently, so QA-001 remains open. The first sandboxed Phase 7 Webpack browser-test build separately failed with `EPERM` creating `.next/server/app/_not-found.segments/_not-found`; the same command passed outside the sandbox (11/11 browser tests). |
+| Retest result | Phase 6: three consecutive `npm run build` attempts outside the sandbox passed (3/3; 0 failures). Phase 7: three more passed (3/3). Phase 8: three more passed (3/3). Phase 9: three consecutive outside-sandbox standard builds passed (3/3; 0 failures); the original loader-worker failure did not recur. Earlier same-host attempts failed intermittently, so QA-001 remains open. The first sandboxed Phase 9 Webpack browser-test build separately failed with `EPERM` creating `.next/server/app/_global-error.segments/_global-error`; the outside-sandbox rerun completed. |
 
 ## QA-002 — Webpack build omitted Tailwind utility styling
 
@@ -61,3 +61,7 @@ No new application UI defect was found in the five synthetic scenario tests or r
 ## Phase 8 defect review
 
 No new Member 3 UI defect was found in the new review tests. QA-003 is a Member 2 contract defect found during integration inspection; no live patient data was sent or changed. QA-001 remains open after a bounded 3/3 standard-build retest. The initial sandboxed Phase 8 Playwright server did not become reachable after a successful Webpack build; the outside-sandbox rerun passed all 15 Chromium tests. See [Phase 8 evidence](phase-8-patient-review-provenance.md).
+
+## Phase 9 defect review
+
+No new unresolved Member 3 UI defect was found after the redesign checks. A missing landing textarea description was found during refinement and fixed before the final verification; the browser suite now checks that its `aria-describedby` target exists and contains the made-up-information instruction. QA-002 remains fixed with a computed-style browser regression. QA-003 remains open under Member 2; its parser test still confirms whitespace trimming, and no persistence path was connected. QA-001 remains open after three passing outside-sandbox standard builds because its prior loader-worker failures were intermittent. The first sandboxed Phase 9 Webpack build separately failed with `EPERM` creating a `.next` prerender directory; outside-sandbox browser verification passed. See [Phase 9 evidence](phase-9-ui-ux-clinician.md).

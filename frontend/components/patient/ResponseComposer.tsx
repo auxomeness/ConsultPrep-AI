@@ -49,7 +49,7 @@ export default function ResponseComposer({
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm sm:p-8">
+    <div className="rounded-3xl border border-line bg-surface p-5 shadow-sm sm:p-6">
       <div className="flex flex-col gap-2">
         <label htmlFor={fieldId} className="text-base font-semibold text-foreground">
           {label}
@@ -64,11 +64,11 @@ export default function ResponseComposer({
         id={fieldId}
         value={value}
         onChange={handleChange}
-        rows={6}
+        rows={4}
         autoComplete="off"
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${instructionsId} ${errorId}` : instructionsId}
-        className="mt-5 block min-h-40 w-full resize-y rounded-lg border border-line bg-field px-4 py-3 text-base leading-7 text-foreground placeholder:text-muted focus:border-accent focus:outline-3 focus:outline-offset-2 focus:outline-focus"
+        className="mt-4 block min-h-32 w-full resize-y rounded-2xl border border-line bg-field px-4 py-3 text-base leading-7 text-foreground placeholder:text-muted focus:border-accent focus:outline-3 focus:outline-offset-2 focus:outline-focus"
         placeholder={placeholder}
       />
 
@@ -79,20 +79,20 @@ export default function ResponseComposer({
       )}
 
       {locallyChecked && (
-        <p role="status" className="mt-4 rounded-lg border border-line bg-preview px-4 py-3 text-sm leading-6 text-preview-foreground">
+        <p role="status" className="mt-4 rounded-xl bg-preview px-4 py-3 text-sm leading-6 text-preview-foreground">
           Local check complete. Your text has not been saved or sent.
         </p>
       )}
 
       {onValidCheck && (
-        <div className="mt-7 flex flex-col gap-3 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-sm text-sm leading-6 text-muted">
-            This checks for entered text only. It does not create an intake or contact AI.
+            Local text check only. Nothing is sent.
           </p>
           <button
             type="button"
             onClick={handleCheck}
-            className="inline-flex min-h-12 w-full shrink-0 items-center justify-center rounded-lg bg-accent px-5 py-3 font-semibold text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus sm:w-auto"
+            className="inline-flex min-h-12 w-full shrink-0 items-center justify-center rounded-xl bg-accent px-5 py-3 font-semibold text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus sm:w-auto"
           >
             Check response locally
           </button>

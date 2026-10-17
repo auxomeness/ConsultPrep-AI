@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+<<<<<<< Updated upstream
 import Link from "next/link";
 import type { ReactNode } from "react";
+=======
+import SiteHeader from "@/components/ui/SiteHeader";
+>>>>>>> Stashed changes
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,6 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           Skip to main content
         </a>
+<<<<<<< Updated upstream
         <header className="border-b border-line bg-surface">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-12">
             <Link
@@ -53,6 +58,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </span>
           </div>
         </header>
+=======
+        <SiteHeader />
+>>>>>>> Stashed changes
         {children}
       </body>
     </html>

@@ -1,28 +1,39 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
+import { storeLandingDraft } from "../../lib/preview-draft";
 
 export default function ProductIntroduction() {
-  return (
-    <main id="main-content" className="mx-auto w-full max-w-6xl px-5 pb-20 pt-12 sm:px-8 sm:pt-16 lg:px-12 lg:pt-24">
-      <div className="grid items-start gap-12 lg:grid-cols-5 lg:gap-16">
-        <section className="lg:col-span-3" aria-labelledby="introduction-title">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">
-            Pre-consultation preparation
-          </p>
-          <h1 id="introduction-title" className="mt-5 max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-            Organize your concerns before the conversation.
-          </h1>
-          <p className="mt-7 max-w-2xl text-lg leading-8 text-muted">
-            ConsultPrep AI helps put what you want to discuss into clear words before a consultation with a healthcare professional.
-          </p>
-          <p className="mt-5 text-lg font-semibold text-foreground">
-            AI documents. Clinicians decide.
-          </p>
+  const [concern, setConcern] = useState("");
 
-          <div className="mt-9 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+  return (
+    <main id="main-content" className="mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-5xl flex-col justify-center px-5 pb-20 pt-14 sm:px-8 sm:pb-24 lg:px-12">
+      <div className="mx-auto w-full max-w-2xl text-center">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Prepare for a healthcare conversation</p>
+        <h1 className="mt-5 text-5xl font-semibold leading-tight tracking-tight text-foreground sm:text-6xl">ConsultPrep AI</h1>
+        <p className="mt-4 text-xl font-medium text-muted sm:text-2xl">AI documents. Clinicians decide.</p>
+
+        <section aria-labelledby="landing-prompt" className="mt-10 rounded-3xl border border-line bg-surface p-5 text-left shadow-sm sm:p-7">
+          <h2 id="landing-prompt" className="sr-only">Start a preview concern</h2>
+          <label htmlFor="landing-concern" className="block text-lg font-semibold text-foreground">What would you like to discuss?</label>
+          <textarea
+            id="landing-concern"
+            value={concern}
+            onChange={(event) => setConcern(event.target.value)}
+            aria-describedby="landing-instructions"
+            rows={3}
+            placeholder="For example, a concern I would like to discuss..."
+            className="mt-5 block min-h-28 w-full resize-y rounded-2xl border border-line bg-field px-4 py-3 text-base leading-7 text-foreground placeholder:text-muted focus:border-accent focus:outline-3 focus:outline-offset-2 focus:outline-focus"
+          />
+          <div className="mt-5 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+            <p id="landing-instructions" className="text-sm leading-6 text-muted">Use made-up information. This temporary browser-tab draft does not create a patient record.</p>
             <Link
               href="/intake"
-              className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-lg bg-accent px-6 py-3 text-center font-semibold text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus sm:w-auto"
+              onClick={() => storeLandingDraft(concern)}
+              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-6 py-3 text-center font-semibold text-accent-contrast transition-colors hover:bg-accent-hover focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus"
             >
+<<<<<<< Updated upstream
               Try the AMD AI intake
               <span aria-hidden="true">→</span>
             </Link>
@@ -55,8 +66,21 @@ export default function ProductIntroduction() {
         </h2>
         <p className="mt-3 leading-7 text-muted">
           ConsultPrep AI organizes what you share. It does not diagnose, prescribe, or replace professional medical judgment. A clinician has not reviewed this development demo.
+=======
+              Begin intake preview <span aria-hidden="true" className="ml-2">→</span>
+            </Link>
+          </div>
+        </section>
+
+        <p className="mx-auto mt-7 max-w-xl text-sm leading-6 text-muted">
+          ConsultPrep AI organizes information before a consultation. It does not diagnose, prescribe medication, or replace professional medical judgment.
+>>>>>>> Stashed changes
         </p>
-      </section>
+        <details id="about" className="mx-auto mt-5 max-w-xl text-left text-sm leading-6 text-muted">
+          <summary className="mx-auto w-fit cursor-pointer rounded-md font-semibold text-accent underline-offset-4 hover:underline focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-focus">How this preview works</summary>
+          <p className="mt-3 rounded-2xl border border-line bg-elevated p-4">This preview checks text locally and shows synthetic examples. Nothing is sent to AI or a clinician. In the full workflow, a clinician would review the collected information.</p>
+        </details>
+      </div>
     </main>
   );
 }

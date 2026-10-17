@@ -38,6 +38,24 @@ Member 1's v1.0 `InformationStatusSchema` now includes the five Phase 7 labels; 
 
 No criterion was upgraded to **verified by actual integration**. The review browser checks are fixture presentation checks, not service integration tests.
 
+## Phase 9 UI refinement evidence (2026-10-17)
+
+The redesigned landing, conversation, information-state gallery, and review passed 21 component and 17 Chromium tests using synthetic data. The landing concern is carried once within the same browser tab; no patient session is created or response persisted. The review still displays original statements, a later correction, draft wording, source disclosures, and distinct answer states. Source mismatch and missing-source handling remain covered. See [Phase 9 evidence](phase-9-ui-ux-clinician.md).
+
+| Criterion | Phase 9 classification | Remaining gate |
+|---|---|---|
+| P01 | Blocked | The landing action opens a preview; Member 2 session creation and acknowledgement are unavailable. |
+| P02 | Partially verified | Local empty/whitespace validation, preserved input, focus, and no write request pass; final shared validation and real submission are absent. |
+| P03 | Partially verified | Exact editable local concern and second draft pass; no persisted question/response association. |
+| P04–P07 | Blocked | No response save or application AI request/pending/failure path. The displayed follow-up is fixed and synthetic. |
+| P08–P09 | Blocked | Static unanswered and unknown examples do not implement skip or uncertainty choices. |
+| P10–P11 | Verified presentation only | Correction history, draft labels, and source disclosure pass with synthetic data; no authenticated retrieval or live AI draft. |
+| P12–P13 | Blocked | No saved correction or authoritative confirmation operation. |
+| P14–P16 | Blocked | No submission operation, acknowledgement, or recovery/deduplication contract. |
+| C01–C11 | Blocked at application level | Member 2 has schema and pure authorization guards but no clinician UI, authenticated case operations, revision save, or finalization route. No clinician browser workflow could run. |
+
+No full patient or clinician integration criterion passed in Phase 9. A future UI working state remains conditional on a real pending AI operation.
+
 ## Patient criteria
 
 | ID | Given / When / Then |

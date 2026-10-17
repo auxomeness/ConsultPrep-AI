@@ -41,29 +41,29 @@ const examples = [
 
 export default function InformationStatePreview() {
   return (
-    <div className="mt-8 space-y-5">
+    <div className="mt-8 overflow-hidden rounded-2xl border border-line bg-surface divide-y divide-line">
       {examples.map((example) => (
-        <article key={example.label} aria-labelledby={`state-${example.label.replaceAll(" ", "-").toLowerCase()}`} className="min-w-0 rounded-2xl border border-line bg-surface p-5 shadow-sm sm:p-8">
-          <h2 id={`state-${example.label.replaceAll(" ", "-").toLowerCase()}`} className="text-xl font-semibold leading-8">
+        <article key={example.label} aria-labelledby={`state-${example.label.replaceAll(" ", "-").toLowerCase()}`} className="min-w-0 bg-surface p-5 sm:px-8 sm:py-7">
+          <h2 id={`state-${example.label.replaceAll(" ", "-").toLowerCase()}`} className="text-lg font-semibold leading-8">
             {example.label}
           </h2>
-          <p className="mt-2 text-base leading-7 text-muted">{example.meaning}</p>
+          <p className="mt-1 text-sm leading-6 text-muted">{example.meaning}</p>
 
           {"question" in example && (
-            <div className="mt-5 border-t border-line pt-5">
+            <div className="mt-4">
               <h3 className="text-sm font-semibold text-foreground">Original question</h3>
-              <p className="mt-2 break-words [overflow-wrap:anywhere] leading-7">{example.question}</p>
+              <p className="mt-1 break-words [overflow-wrap:anywhere] leading-7">{example.question}</p>
             </div>
           )}
 
-          <div className="mt-5 border-t border-line pt-5">
+          <div className="mt-4">
             <h3 className="text-sm font-semibold text-foreground">Patient response</h3>
             {example.statements.length > 0 ? (
               <ol className="mt-3 space-y-4">
                 {example.statements.map((statement) => (
                   <li key={statement.label}>
                     <p className="text-sm font-medium text-muted">{statement.label}</p>
-                    <blockquote className="mt-2 border-l-4 border-accent pl-4 break-words [overflow-wrap:anywhere] text-base leading-7 text-foreground">
+                    <blockquote className="mt-2 break-words border-l-4 border-accent pl-4 text-base leading-7 text-foreground [overflow-wrap:anywhere]">
                       {statement.text}
                     </blockquote>
                   </li>
@@ -74,7 +74,7 @@ export default function InformationStatePreview() {
             )}
           </div>
 
-          <p className="mt-5 border-t border-line pt-5 text-sm leading-6 text-muted">{example.explanation}</p>
+          <p className="mt-4 text-sm leading-6 text-muted">{example.explanation}</p>
         </article>
       ))}
     </div>

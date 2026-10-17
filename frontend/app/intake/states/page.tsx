@@ -3,7 +3,7 @@ import InformationStatePreview from "@/components/patient/InformationStatePrevie
 
 export default function InformationStatesPage() {
   return (
-    <main id="main-content" className="mx-auto w-full max-w-3xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
+    <main id="main-content" className="mx-auto w-full max-w-3xl px-5 pb-20 pt-8 sm:px-8 sm:pt-12">
       <nav aria-label="Page navigation">
         <Link
           href="/intake"
@@ -14,16 +14,14 @@ export default function InformationStatesPage() {
         </Link>
       </nav>
 
-      <div className="mt-9 rounded-xl border border-line bg-preview px-5 py-4 text-sm leading-6 text-preview-foreground" role="note">
-        <strong>Synthetic UI-development preview.</strong> These five labels match Member 1&apos;s v1.0 information-status contract. The examples are made up, were not produced by AI, and are not saved or connected to a patient or clinician record.
+      <div className="mt-7 rounded-2xl border border-line bg-preview px-5 py-4 text-sm leading-6 text-preview-foreground" role="note">
+        <strong>Synthetic UI-development preview.</strong> These five answer labels use the current information-status vocabulary. Every example is made up, was not produced by AI, and is not saved or connected to a patient or clinician record.
       </div>
 
-      <header className="mt-10">
-        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">Patient information preview</p>
-        <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Information-state preview</h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-          Compare how reported, unknown, unanswered, unclear, and conflicting information can be shown. Original patient wording stays visible when a response exists.
-        </p>
+      <header className="mt-10 max-w-2xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Patient information preview</p>
+        <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Information states</h1>
+        <p className="mt-3 text-base leading-7 text-muted">See how five different answer states appear in a made-up example. Original wording stays visible when a response exists.</p>
       </header>
 
       <InformationStatePreview />

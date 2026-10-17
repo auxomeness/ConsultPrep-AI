@@ -5,10 +5,19 @@ test("synthetic review is distinct from the local intake draft and sources work 
   page.on("request", (request) => {
     if (request.method() !== "GET") writes.push(`${request.method()} ${request.url()}`);
   });
+<<<<<<< Updated upstream
   await page.goto("/intake/review");
+=======
+  await page.goto("/intake");
+  const openReview = page.getByRole("link", { name: "View synthetic patient review" });
+  await expect(page.getByText(/your local drafts are not carried there/i)).toBeVisible();
+  await openReview.focus();
+  await openReview.press("Enter");
+
+>>>>>>> Stashed changes
   await expect(page).toHaveURL(/\/intake\/review$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Review statements and sources");
-  await expect(page.getByText(/No AI generated this example, no patient record/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Review the example brief");
+  await expect(page.getByText(/No AI generated it, no patient record was retrieved/)).toBeVisible();
   const mainConcern = page.getByRole("region", { name: "Main concern" });
   const source = mainConcern.locator("summary", { hasText: "View original patient statement r6" });
   await source.focus();
