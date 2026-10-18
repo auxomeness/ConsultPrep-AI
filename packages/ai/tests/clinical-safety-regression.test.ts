@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildStructuredBrief } from "../src/brief.js";
 import { createAiService, planNextQuestion } from "../src/service.js";
-import { assessSafety, emergencyContactFromEnvironment } from "../src/safety.js";
+import { assessPromptAssessmentNeed, assessSafety, emergencyContactFromEnvironment } from "../src/safety.js";
 import { AiServiceError } from "../src/errors.js";
 import { InMemoryRetriever } from "../src/rag.js";
 import { applyIntakeTurn, interruptIntakeForSafety, recordPatientAnswer } from "../src/workflow.js";
@@ -193,6 +193,13 @@ describe("contextual conversation and emergency regression scenarios", () => {
     const state = answer(startState(), "I have a severe headache and I feel weak.");
     const withOneVomitingReport = answer(state, "I vomited once", "additional_symptoms", "Have you noticed any other symptoms?");
     expect(assessSafety(withOneVomitingReport).routed).toBe(false);
+  });
+
+  it("recommends prompt professional assessment for a high reported temperature with weakness affecting daily activities, without calling it an emergency", () => {
+    const state = answer(startState(), "I have chills and a temperature of 38.5.");
+    const withWeakness = answer(state, "I feel weak and can’t do my chores.");
+    expect(assessPromptAssessmentNeed(withWeakness)).toBe(true);
+    expect(assessSafety(withWeakness).routed).toBe(false);
   });
 
   it("does not combine unrelated or negated symptoms into the headache emergency rule", () => {

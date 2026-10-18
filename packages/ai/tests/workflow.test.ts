@@ -37,6 +37,22 @@ describe("patient correction and completion transitions", () => {
     expect(recorded.state.currentIntent).toBe("summary");
   });
 
+  it("treats yes please as accepting the assistant's contextual summary offer", () => {
+    const offered = {
+      ...state,
+      recentAssistantMessages: ["We can turn what you shared into a draft consultation summary for you to review. Would you like me to generate it now?"],
+      fields: [{ fieldId: "sore_throat", value: "Sore throat", status: "reported" as const, sourceResponseIds: ["r1"] }],
+      completion: "in_progress" as const,
+    };
+
+    const accepted = recordPatientAnswer(offered, "yes please");
+
+    expect(accepted.state.currentIntent).toBe("summary");
+    expect(accepted.state.fields).toContainEqual(expect.objectContaining({ fieldId: "sore_throat", value: "Sore throat" }));
+    expect(accepted.state.fields.every((field) => !field.sourceResponseIds.includes(accepted.responseId))).toBe(true);
+    expect(accepted.state.questionHistory).toEqual(offered.questionHistory);
+  });
+
   it("keeps a bare correction of an assistant misattribution out of the clinical facts", () => {
     const active: IntakeState = {
       ...state,
@@ -68,6 +84,27 @@ describe("patient correction and completion transitions", () => {
       sourceResponseIds: [recorded.responseId],
     }));
     expect(recorded.state.fields.some((field) => field.fieldId === "headache_location" && field.sourceResponseIds.includes(recorded.responseId))).toBe(false);
+  });
+
+  it("keeps a possible-causes question as a side turn and leaves the pending intake question active", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a headache.", sequence: 0 }],
+      fields: [{ fieldId: "headache", value: "Headache", status: "reported", sourceResponseIds: ["r1"] }],
+      questionsAsked: ["When did the headache begin?"],
+      activeQuestionId: "symptom_onset__headache",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(active, "Can you tell me possible causes?");
+    expect(recorded.state.currentIntent).toBe("guidance_request");
+    expect(recorded.state.activeQuestionId).toBe("symptom_onset__headache");
+    expect(recorded.state.responses.at(-1)?.text).toBe("Can you tell me possible causes?");
+    expect(recorded.state.fields).toContainEqual(expect.objectContaining({
+      fieldId: "patient_question",
+      value: "Can you tell me possible causes",
+      sourceResponseIds: [recorded.responseId],
+    }));
+    expect(recorded.state.fields.some((field) => field.fieldId.startsWith("symptom_onset_") && field.sourceResponseIds.includes(recorded.responseId))).toBe(false);
   });
 
   it("accumulates separate patient questions rather than marking them as conflicting reports", () => {
@@ -262,5 +299,36 @@ describe("patient correction and completion transitions", () => {
     expect(confirmed).toMatchObject({ completion: "completed", patientConfirmed: true });
     expect(confirmPatientBrief(confirmed)).toEqual(confirmed);
     expect(nextRequiredInterviewQuestion(confirmed)).toBeNull();
+  });
+
+  it("records a natural no-more-symptoms reply as answered so the interview will not ask again", () => {
+    const active: IntakeState = {
+      ...state,
+      responses: [{ id: "r1", text: "I have a sore throat and a runny nose.", sequence: 0 }],
+      fields: [
+        { fieldId: "sore_throat", value: "Sore throat", status: "reported", sourceResponseIds: ["r1"] },
+        { fieldId: "runny_nose", value: "Runny nose", status: "reported", sourceResponseIds: ["r1"] },
+      ],
+      questionsAsked: ["Have you noticed any other symptoms along with this?"],
+      questionHistory: [{ questionId: "additional_symptoms", targetField: "additional_symptoms", status: "asked", sourceResponseIds: [] }],
+      activeQuestionId: "additional_symptoms",
+      completion: "in_progress",
+    };
+
+    const recorded = recordPatientAnswer(active, "No, that’s all. I haven’t noticed anything else.");
+
+    expect(recorded.state.fields).toContainEqual(expect.objectContaining({
+      fieldId: "additional_symptoms",
+      value: "No additional symptoms reported",
+      status: "patient_denied",
+      sourceResponseIds: [recorded.responseId],
+    }));
+    expect(recorded.state.questionHistory).toContainEqual(expect.objectContaining({
+      questionId: "additional_symptoms",
+      status: "answered",
+      sourceResponseIds: [recorded.responseId],
+    }));
+    expect(planNextQuestion(recorded.state)?.questionId).not.toBe("additional_symptoms");
+    expect(planNextQuestion(recorded.state)?.questionId).not.toBe("ent_related");
   });
 });

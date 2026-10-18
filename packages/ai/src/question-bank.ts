@@ -213,6 +213,7 @@ export function isQuestionApplicable(question: QuestionDefinition, input: { conc
   }
   if (question.category === "throat_nose_ear") {
     if (question.id === "ent_location") return has("cold_like_symptoms") || has("sore_throat", "runny_nose") && (has("sore_throat") && has("runny_nose") || /\b(ear|sinus)\b/i.test(text));
+    if (question.id === "ent_related" && input.fields.some((field) => field.fieldId === "additional_symptoms" && field.status === "patient_denied")) return false;
     return question.id === "ent_related" && has("sore_throat", "runny_nose") && /\b(worse|changing|swallow|breath|ear|sinus)\b/i.test(text);
   }
   if (question.category === "digestive") {

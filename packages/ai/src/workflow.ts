@@ -1,7 +1,7 @@
 import type { IntakeField, IntakeState, NextTurnResult, QuestionHistoryEntry, SafetyEvent } from "./contracts.js";
 import { extractPatientFacts, mergeFieldUpdates, restorePatientFacts } from "./intake-facts.js";
 import { QUESTION_BANK } from "./question-bank.js";
-import { classifyConversationIntent, communicationPreferencesFromText, isBareMisattributionCorrection, isNoAdditionalInformation } from "./conversation.js";
+import { acceptsSummaryOffer, classifyConversationIntent, communicationPreferencesFromText, isBareMisattributionCorrection, isNoAdditionalInformation, isPureAcknowledgement } from "./conversation.js";
 
 /** Add one patient answer and locally extracted facts to an intake state. */
 export function recordPatientAnswer(state: IntakeState, text: string): { state: IntakeState; responseId: string } {
@@ -19,7 +19,9 @@ export function recordPatientAnswer(state: IntakeState, text: string): { state: 
     && /(?:how would you describe|describe (?:the )?(?:concern|what)|in your own words)/i.test(latestQuestion);
   const intent = ambiguousYesNoToDescription
     ? "clarification_request"
-    : classifyConversationIntent({ text, isFirstPatientTurn: state.responses.length === 0 });
+    : acceptsSummaryOffer(text, state.recentAssistantMessages?.at(-1))
+      ? "summary"
+      : classifyConversationIntent({ text, isFirstPatientTurn: state.responses.length === 0 });
   if (intent === "correction" && isBareMisattributionCorrection(text)) {
     const responseId = `response-${state.responses.length + 1}`;
     return {
@@ -58,7 +60,8 @@ export function recordPatientAnswer(state: IntakeState, text: string): { state: 
   };
   // Uncertainty is still an answer to the active question. Let the fact
   // extractor record it as unknown/declined so the planner can move on.
-  const nonClinicalOpening = ["recall_request", "summary", "workflow_question", "clarification_request", "repetition_complaint", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening"].includes(intent)
+  const nonClinicalOpening = intent === "acknowledgement" || isPureAcknowledgement(text)
+    || ["recall_request", "summary", "workflow_question", "clarification_request", "repetition_complaint", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening"].includes(intent)
     || intent === "unclear" && !activeQuestionId;
   const preferenceUpdate = communicationPreferencesFromText(text);
   let updates = nonClinicalOpening ? [] : mergeFieldUpdates([], extractionQuestionIds.length > 1
@@ -90,7 +93,8 @@ export function recordPatientAnswer(state: IntakeState, text: string): { state: 
   const fields = mergeFieldUpdates(state.fields, updates);
   const answerFields = fields.filter((field) => field.sourceResponseIds.includes(responseId));
   const answeredQuestionIds = activeQuestionIds.filter((questionId) => activeQuestionAnswered(questionId, updates, text));
-  const deferActiveQuestion = ["recall_request", "summary", "format_preference", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening", "guidance_request", "personal_concern", "workflow_question", "care_service_request", "frightened_about_dying"].includes(intent);
+  const deferActiveQuestion = intent === "acknowledgement" || isPureAcknowledgement(text)
+    || ["recall_request", "summary", "format_preference", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening", "guidance_request", "personal_concern", "workflow_question", "care_service_request", "frightened_about_dying"].includes(intent);
   const questionHistory = activeQuestionIds.length && (!nonClinicalOpening || intent === "clarification_request")
     ? activeQuestionIds.reduce((history, questionId) => answeredQuestionIds.includes(questionId) || intent === "clarification_request"
       ? markQuestionAnswered(history, questionId, responseId, answerFields, text)
@@ -119,7 +123,8 @@ export function recordPatientAnswer(state: IntakeState, text: string): { state: 
 
 /** Preserve a clear "none" answer when the same turn also asks for help. */
 function isLeadingNoAdditionalSymptomsAnswer(text: string): boolean {
-  return /^\s*(?:none|nothing(?:\s+else)?|nope)(?:\b|[,;.!?—-])/i.test(text);
+  return isNoAdditionalInformation(text)
+    || /^\s*(?:none|nothing(?:\s+else)?|nope|no\s*[,;—-]\s*(?:that's all|that is all|nothing else|no other symptoms?|i haven't noticed|i have not noticed)|i have no other symptoms?|i don't have any other symptoms?|i do not have any other symptoms?)(?:\b|[,;.!?—-])/i.test(text);
 }
 
 /** Apply the AI service's validated turn delta without replacing patient evidence. */
@@ -147,7 +152,7 @@ export function applyIntakeTurn(state: IntakeState, result: Pick<NextTurnResult,
     ...(questionIds.length ? { activeQuestionId: questionIds[0], activeQuestionIds: questionIds } : state.currentIntent === "repetition_complaint" ? {} : state.activeQuestionId ? { activeQuestionId: state.activeQuestionId, ...(state.activeQuestionIds ? { activeQuestionIds: state.activeQuestionIds } : {}) } : {}),
     questionHistory,
     ...(result.assistantMessage ? { recentAssistantMessages: [...(state.recentAssistantMessages ?? []), result.assistantMessage].slice(-8) } : {}),
-    completion: ["recall_request", "format_preference", "clarification_request", "correction", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening", "guidance_request", "personal_concern", "workflow_question", "care_service_request", "frightened_about_dying"].includes(state.currentIntent ?? "")
+    completion: ["recall_request", "format_preference", "clarification_request", "correction", "off_topic", "greeting", "identity_question", "vague_opening", "ambiguous_opening", "acknowledgement", "guidance_request", "personal_concern", "workflow_question", "care_service_request", "frightened_about_dying"].includes(state.currentIntent ?? "")
       ? state.completion
       : result.askedQuestion ? "in_progress" : "ready_for_review",
     ...(result.guidanceProvided ? { guidanceProvided: [...(state.guidanceProvided ?? []), result.guidanceProvided] } : {}),

@@ -10,9 +10,10 @@ describe("assistant scope instructions", () => {
     expect(SYSTEM_INSTRUCTIONS).toMatch(/No vetted clinical reference corpus is currently provided/i);
   });
 
-  it("keeps intake turns brief and question-led", () => {
-    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/brief pre-consultation interview/i);
-    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/one focused, non-leading follow-up question/i);
-    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/answer it directly in one or two plain-language sentences/i);
+  it("keeps intake turns concise and lets the application decide when to ask", () => {
+    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/brief pre-consultation interview and conversation/i);
+    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/do not generate a follow-up question/i);
+    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/the application decides whether a planned question is useful/i);
+    expect(CONTINUE_OUTPUT_INSTRUCTIONS).toMatch(/answer what they asked in one or two plain-language sentences/i);
   });
 });

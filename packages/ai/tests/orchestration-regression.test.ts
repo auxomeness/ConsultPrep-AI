@@ -68,6 +68,7 @@ describe("patient-centered orchestration regression cases", () => {
     expect(result.assistantMessage).toMatch(/can.t determine the cause/i);
     expect(result.assistantMessage).not.toMatch(/thanks, i.ve noted that/i);
     expect(result.askedQuestion).toBeNull();
+    expect(result.assistantMessage).not.toMatch(/when did the weakness begin/i);
     expect(result.guidanceProvided?.sourceResponseIds).toEqual(["r3"]);
     const updated = applyIntakeTurn(state, result);
     const brief = buildStructuredBrief(updated);

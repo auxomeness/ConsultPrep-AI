@@ -75,7 +75,7 @@ export const IntakeStateSchema = z.object({
     questionPacing: z.enum(["one_at_a_time", "grouped"]).optional(),
   }).optional(),
   completion: z.enum(["in_progress", "ready_for_review", "completed", "emergency_interrupted"]),
-  currentIntent: z.enum(["recall_request", "format_preference", "clarification_request", "off_topic", "finish", "summary", "workflow_question", "guidance_request", "personal_concern", "correction", "repetition_complaint", "decline", "unclear", "identity_question", "eye_care_navigation", "care_service_request", "frightened_about_dying", "greeting", "vague_opening", "ambiguous_opening", "continue"]).optional(),
+  currentIntent: z.enum(["recall_request", "format_preference", "clarification_request", "off_topic", "finish", "summary", "workflow_question", "guidance_request", "personal_concern", "correction", "repetition_complaint", "decline", "unclear", "identity_question", "eye_care_navigation", "care_service_request", "frightened_about_dying", "greeting", "vague_opening", "ambiguous_opening", "acknowledgement", "continue"]).optional(),
   patientConfirmed: z.boolean().optional(),
   safety: SafetyEventSchema.optional(),
   guidanceProvided: z.array(GuidanceRecordSchema).max(50).optional(),

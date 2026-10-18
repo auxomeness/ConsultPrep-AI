@@ -18,6 +18,22 @@ describe("source-linked intake fact extraction", () => {
     expect(facts).toContainEqual(expect.objectContaining({ fieldId: "cramping", status: "reported" }));
   });
 
+  it("preserves an ear-symptom denial as scoped information, not a denial of all symptoms", () => {
+    const facts = extractPatientFacts({
+      id: "ent-answer",
+      text: "My nose is runny, and my throat feels scratchy. I haven't noticed any ear symptoms.",
+      sequence: 1,
+    }, "For the cold symptoms you mentioned, what are you noticing in your nose, throat, or ears?", "ent_location");
+
+    expect(facts).toContainEqual({
+      fieldId: "ent_associated_features",
+      value: "No ear symptoms noticed",
+      status: "patient_denied",
+      sourceResponseIds: ["ent-answer"],
+    });
+    expect(facts).not.toContainEqual(expect.objectContaining({ fieldId: "additional_symptoms", status: "patient_denied" }));
+  });
+
   it.each([
     ["midnight", "Midnight"],
     ["around midnight", "Around midnight"],

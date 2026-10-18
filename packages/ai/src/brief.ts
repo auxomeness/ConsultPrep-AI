@@ -71,7 +71,12 @@ export function buildStructuredBrief(state: IntakeState, confirmed = false): Str
   const actionFields = activeFields.filter((field) => field.fieldId === "actions_taken");
   const backgroundFacts = [
     ...factsFor(contextFields),
-    ...symptomDetailFields.flatMap((field) => factsFor([field]).map((fact) => ({ ...fact, text: `${humanize(field.fieldId)}: ${fact.text}` }))),
+    ...symptomDetailFields.flatMap((field) => factsFor([field]).map((fact) => ({
+      ...fact,
+      text: field.fieldId === "ent_associated_features" && /^no ear symptoms noticed$/i.test(fact.text)
+        ? "Ear symptoms: None noticed"
+        : `${humanize(field.fieldId)}: ${fact.text}`,
+    }))),
     ...factsFor(actionFields).map((fact) => ({ ...fact, text: `Action taken: ${fact.text}` })),
   ];
   const categoryText = [state.concern, ...state.responses.map((response) => response.text)].join("\n");
@@ -270,17 +275,20 @@ function makePatientReportedNarrative(
       : `I’m also experiencing ${joinNatural(otherSymptoms).toLocaleLowerCase()}.`);
   }
   const onsetFacts = timeline.map((fact) => fact.text).filter((text) => /^Onset(?: \(.+\))?:/i.test(text));
-  const onsetValues = [...new Set(onsetFacts.map((text) => text.replace(/^Onset(?: \(.+\))?:\s*/i, "")))];
   const timelineText = [
-    ...(onsetValues.length === 1 && onsetFacts.length > 1 ? [`My symptoms began ${onsetValues[0]!.toLocaleLowerCase()}`] : onsetFacts.map(naturalTimeline)),
+    ...onsetFacts.map(naturalTimeline),
     ...timeline.map((fact) => fact.text).filter((text) => !/^Onset(?: \(.+\))?:/i.test(text)).map(naturalTimeline),
   ];
-  if (timelineText.length) sentences.push(`${joinNatural(timelineText)}.`);
+  if (timelineText.length) sentences.push(`${joinNatural(timelineText).replace(/\band My\b/g, "and my")}.`);
   const detailText = details.map((fact) => fact.text).filter((value) => !value.startsWith("Action taken: ")
     && !(primary && value.split(/:\s*/, 2).at(-1)?.trim() && primary.toLocaleLowerCase().includes(value.split(/:\s*/, 2).at(-1)!.trim().toLocaleLowerCase())));
   for (const detail of detailText) {
     const [label, value] = detail.split(/:\s*/, 2);
     if (!label || !value) continue;
+    if (/^ear symptoms$/i.test(label) && /^(?:none|no symptoms?) noticed$/i.test(value)) {
+      sentences.push("I haven’t noticed any ear symptoms.");
+      continue;
+    }
     if (/^cramping character$/i.test(label) && /hard to describe/i.test(value)) {
       sentences.push("I find the cramping hard to describe clearly.");
       continue;
@@ -314,7 +322,10 @@ function naturalTimeline(text: string): string {
   const specific = text.match(/^Onset \((.+)\):\s*(.+)$/i);
   if (specific) {
     const symptom = specific[1]!.toLocaleLowerCase();
-    return `${symptom === "headache" ? "My headache" : "My symptoms"} began ${specific[2]!.toLocaleLowerCase()}`;
+    const subject = symptom === "feeling cold or chills" ? "My chills"
+      : symptom === "feeling hot or feverish" ? "My feverish feeling"
+        : `My ${symptom}`;
+    return `${subject} began ${specific[2]!.toLocaleLowerCase()}`;
   }
   const onset = text.match(/^Onset:\s*(.+)$/i);
   if (onset) return `My symptoms began ${onset[1]!.toLocaleLowerCase()}`;

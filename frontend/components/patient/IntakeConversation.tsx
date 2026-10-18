@@ -67,8 +67,16 @@ async function requestIntake(body: Record<string, unknown>, signal?: AbortSignal
 }
 
 function asBrief(value: unknown): Brief | null {
-  if (!value || typeof value !== "object") return null;
-  return value as Brief;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const arrayFields = ["reasonForConsultation", "currentSymptoms", "symptomTimeline", "relevantBackground", "functionalImpact", "patientConcernsAndQuestions", "importantUnansweredQuestions"];
+  if (!(candidate.status === "ai_generated_draft" || candidate.status === "patient_confirmed")
+    || arrayFields.some((field) => !Array.isArray(candidate[field]))) return null;
+  if (candidate.patientReportedNarrative !== undefined) {
+    const narrative = candidate.patientReportedNarrative;
+    if (!narrative || typeof narrative !== "object" || typeof (narrative as Record<string, unknown>).text !== "string") return null;
+  }
+  return candidate as unknown as Brief;
 }
 
 function displayAssistantMessage(value: unknown): string {
@@ -113,6 +121,34 @@ export default function IntakeConversation() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollToLatestMessageRef = useRef(false);
   const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const startIntakeRequestRef = useRef<Promise<Record<string, unknown>> | null>(null);
+  const lastLoggedBriefRef = useRef<Brief | null>(null);
+
+  useEffect(() => {
+    if (!brief || lastLoggedBriefRef.current === brief) return;
+    lastLoggedBriefRef.current = brief;
+    if (process.env.NODE_ENV === "development") {
+      console.info("[consultprep:intake]", JSON.stringify({
+        event: "summary_rendered",
+        artifactRendered: true,
+        responseId: state && Array.isArray(state.responses)
+          ? (state.responses as Array<{ id?: string }>).at(-1)?.id ?? null : null,
+        persistenceAttempted: isActiveSaved,
+        sourceResponseCount: state && Array.isArray(state.responses) ? state.responses.length : null,
+      }));
+    }
+  }, [brief, isActiveSaved, state]);
+
+  function getStartIntakeRequest() {
+    if (!startIntakeRequestRef.current) {
+      const request = requestIntake({ operation: "start" });
+      startIntakeRequestRef.current = request;
+      void request.catch(() => {
+        if (startIntakeRequestRef.current === request) startIntakeRequestRef.current = null;
+      });
+    }
+    return startIntakeRequestRef.current;
+  }
 
   useEffect(() => {
     if (!busy) {
@@ -200,11 +236,29 @@ export default function IntakeConversation() {
       });
     }
     try {
-      localStorage.setItem("consultprep.saved-consultations", JSON.stringify(storedConversations));
+      const serialized = JSON.stringify(storedConversations);
+      localStorage.setItem("consultprep.saved-consultations", serialized);
+      const verified = localStorage.getItem("consultprep.saved-consultations") === serialized;
+      if (!verified) throw new Error("Saved consultation could not be verified.");
+      if (process.env.NODE_ENV === "development") {
+        console.info("[consultprep:intake]", JSON.stringify({
+          event: "conversation_persistence",
+          attempted: true,
+          verified,
+          savedConversationCount: storedConversations.length,
+        }));
+      }
     } catch {
       setError("This browser could not save the consultation. Check its storage settings and try again.");
     }
   }, [storageReady, savedConversations, conversationId, activeTitle, isActiveSaved, state, turns, brief, safetyStopped, pendingResponseId]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    // Start loading the local model while the patient reads the introduction.
+    // Keep the returned welcome state so the first send can reuse it.
+    void getStartIntakeRequest().catch(() => undefined);
+  }, [storageReady]);
 
   function newConversation() {
     if (busy) return;
@@ -332,7 +386,7 @@ export default function IntakeConversation() {
     try {
       if (!activeState) {
         composerStartRectRef.current = composerRef.current?.getBoundingClientRect() ?? null;
-        const started = await requestIntake({ operation: "start" }, controller.signal);
+        const started = await getStartIntakeRequest();
         activeState = started.state as IntakeState;
         const openingMessage = displayAssistantMessage(started.assistantMessage);
         setState(activeState);
@@ -350,7 +404,21 @@ export default function IntakeConversation() {
       }
       const result = await requestIntake({ operation: "turn", state: activeState, text: answer }, controller.signal);
       const assistantMessage = displayAssistantMessage(result.assistantMessage);
-      setState(result.state as IntakeState);
+      const returnedBrief = asBrief(result.brief);
+      const resultState = result.state && typeof result.state === "object" ? result.state as IntakeState : null;
+      const isSummaryResult = result.summaryStatus === "local_draft"
+        || Boolean(resultState && resultState.currentIntent === "summary");
+      if (isSummaryResult && !returnedBrief) {
+        const latestResponse = Array.isArray(resultState?.responses)
+          ? (resultState!.responses as Array<{ id?: string }>).at(-1) : undefined;
+        throw new IntakeRequestError("The draft summary could not be displayed. Your answer is saved; choose Try again to rebuild it.", {
+          ...(resultState ? { state: resultState } : {}),
+          ...(latestResponse?.id ? { pendingResponseId: latestResponse.id } : {}),
+        });
+      }
+      if (!resultState) throw new Error("The intake service returned an invalid conversation state. Your answer is saved; try again.");
+      setState(resultState);
+      if (returnedBrief) setBrief(returnedBrief);
       shouldScrollToLatestMessageRef.current = true;
       setTurns((previous) => [...previous, { kind: "question", text: assistantMessage }]);
       setSafetyStopped(result.safety === true);
@@ -404,7 +472,17 @@ export default function IntakeConversation() {
     try {
       const result = await requestIntake({ operation: "retry", state, latestResponseId: pendingResponseId }, controller.signal);
       const assistantMessage = displayAssistantMessage(result.assistantMessage);
-      setState(result.state as IntakeState);
+      const returnedBrief = asBrief(result.brief);
+      const resultState = result.state && typeof result.state === "object" ? result.state as IntakeState : null;
+      if ((result.summaryStatus === "local_draft" || resultState?.currentIntent === "summary") && !returnedBrief) {
+        throw new IntakeRequestError("The draft summary could not be displayed. Your answer is saved; try again.", {
+          ...(resultState ? { state: resultState } : {}),
+          pendingResponseId,
+        });
+      }
+      if (!resultState) throw new Error("The intake service returned an invalid conversation state. Try again.");
+      setState(resultState);
+      if (returnedBrief) setBrief(returnedBrief);
       setTurns((previous) => [...previous, { kind: "question", text: assistantMessage }]);
       shouldScrollToLatestMessageRef.current = true;
       setSafetyStopped(result.safety === true);
@@ -431,8 +509,10 @@ export default function IntakeConversation() {
     setError(null);
     try {
       const result = await requestIntake({ operation: "brief", state }, controller.signal);
+      const generatedBrief = asBrief(result.brief);
+      if (!generatedBrief) throw new Error("The summary response was invalid, so it could not be shown. Please try again.");
       shouldScrollToLatestMessageRef.current = true;
-      setBrief(asBrief(result.brief));
+      setBrief(generatedBrief);
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Could not create the draft summary.");
     } finally {
@@ -634,7 +714,7 @@ export default function IntakeConversation() {
         <p className="max-w-xl self-center text-center text-xs leading-5 text-muted">
           ConsultPrep AI can make mistakes. Check important information with a qualified healthcare professional.
         </p>
-        {!safetyStopped && !brief && renderComposer(!state)}
+        {!safetyStopped && renderComposer(!state)}
       </div>
 
       {error && (

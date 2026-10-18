@@ -26,6 +26,12 @@ export function extractPatientFacts(response: PatientResponse, activeQuestion: s
   const source = [response.id];
   const factStatus = response.correctsResponseId ? "patient_corrected" as const : "reported" as const;
 
+  // Preserve a denial scoped to the ear area without turning it into a denial
+  // of every symptom. The original message remains the source of this fact.
+  if (/\b(?:no|not any|haven't noticed|have not noticed|don't have|do not have)\s+(?:any\s+)?(?:ear|ear-related)\s+(?:symptoms?|changes|issues|problems)\b/i.test(text)) {
+    fields.push({ fieldId: "ent_associated_features", value: "No ear symptoms noticed", status: "patient_denied", sourceResponseIds: source });
+  }
+
   // Keep details attached to the symptom that was actually being discussed.
   // The patient's own wording remains the stored value and source evidence.
   const detailTarget = activeQuestionId === "headache_location" ? "headache_location"

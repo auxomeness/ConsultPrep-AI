@@ -68,9 +68,21 @@ describe("AI service behavior with mocked inference", () => {
     const nextStepRequest = recordPatientAnswer(first.state, "What’s next then?");
     const result = await service.continueIntake({ state: nextStepRequest.state, latestResponseId: nextStepRequest.responseId });
     if ("safety" in result) throw new Error("Expected a workflow answer, received a safety route");
-    expect(result.assistantMessage).toMatch(/draft consultation summary/i);
-    expect(result.assistantMessage).toMatch(/review and correct it/i);
+    expect(result.assistantMessage).toMatch(/next, i can prepare a draft summary/i);
+    expect(result.assistantMessage).toMatch(/would you like me to generate it now/i);
     expect(result.askedQuestion).toBeNull();
+    expect(client.complete).not.toHaveBeenCalled();
+  });
+
+  it("offers the summary after the patient explicitly stops the intake", async () => {
+    const { service, client } = await serviceWith("{}");
+    const started = service.startIntake();
+    const first = recordPatientAnswer(started.state, "I have a headache.");
+    const finish = recordPatientAnswer(first.state, "I’m done");
+    const result = await service.continueIntake({ state: finish.state, latestResponseId: finish.responseId });
+    if ("safety" in result) throw new Error("Expected a summary offer, received a safety route");
+    expect(result.assistantMessage).toMatch(/stop the intake questions here/i);
+    expect(result.assistantMessage).toMatch(/would you like me to generate a draft consultation summary now/i);
     expect(client.complete).not.toHaveBeenCalled();
   });
 
@@ -170,6 +182,58 @@ describe("AI service behavior with mocked inference", () => {
     expect(result.askedQuestion).not.toMatch(/when did .* begin/i);
   });
 
+  it("rejects a local-model reply that repeats sore-throat details as if the assistant experienced them", async () => {
+    const { service } = await serviceWith(JSON.stringify({
+      assistantMessage: "Hi. I’ve had a mild sore throat since yesterday. It feels scratchy and is. I didn’t catch when the runny nose began. Could you tell me, or say if you’re not sure?",
+    }));
+    const active: IntakeState = {
+      schemaVersion: "1.0",
+      concern: "A mild sore throat and runny nose",
+      responses: [
+        { id: "r1", text: "I’ve had a mild sore throat since yesterday.", sequence: 0 },
+        { id: "r2", text: "It feels scratchy and is mostly on the right side. It stays in the same spot.", sequence: 1 },
+        { id: "r3", text: "I also have a runny nose. I have no other symptoms.", sequence: 2 },
+        { id: "r4", text: "It’s mild, about 2 out of 10. I can eat, drink, and do my usual activities.", sequence: 3 },
+      ],
+      fields: [
+        { fieldId: "sore_throat", value: "Sore throat", status: "reported", sourceResponseIds: ["r1"] },
+        { fieldId: "symptom_onset_sore_throat", value: "Yesterday", status: "reported", sourceResponseIds: ["r1"] },
+        { fieldId: "runny_nose", value: "Runny nose", status: "reported", sourceResponseIds: ["r3"] },
+      ],
+      questionsAsked: ["What have you been feeling?", "How would you describe the sore throat?", "Have you noticed any other symptoms?", "When did the runny nose begin?"],
+      activeQuestionId: "symptom_onset__runny_nose",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(active, active.responses[3]!.text);
+    const result = await service.continueIntake({ state: recorded.state, latestResponseId: recorded.responseId });
+
+    if ("safety" in result) throw new Error("Expected the intake to continue.");
+    expect(result.assistantMessage).not.toMatch(/I’ve had a mild sore throat|It feels scratchy and is/i);
+    expect(result.assistantMessage).not.toMatch(/^Hi\./);
+    expect(result.assistantMessage).toMatch(/when the runny nose began/i);
+    expect(result.assistantMessage.match(/\?/g) ?? []).toHaveLength(1);
+  });
+
+  it("acknowledges the symptom whose onset was actually provided instead of summarizing the time alone", async () => {
+    const { service } = await serviceWith(JSON.stringify({
+      assistantMessage: "That places the start at This morning. Where do you feel the headache?",
+    }));
+    const started = service.startIntake();
+    const symptom = recordPatientAnswer(started.state, "I have a headache and chills.");
+    const onsetQuestion = "When did each of these symptoms begin? If they began at different times, you can tell me separately.";
+    const waitingForOnset: IntakeState = {
+      ...symptom.state,
+      questionsAsked: [...symptom.state.questionsAsked, onsetQuestion],
+      activeQuestionId: "symptom_onset__headache,chills",
+      activeQuestionIds: ["symptom_onset__headache,chills"],
+    };
+    const onset = recordPatientAnswer(waitingForOnset, "My sore throat started this morning.");
+    const result = await service.continueIntake({ state: onset.state, latestResponseId: onset.responseId });
+    if ("safety" in result) throw new Error("Expected a routine follow-up.");
+    expect(result.assistantMessage).toMatch(/sore throat began this morning/i);
+    expect(result.assistantMessage).toMatch(/headache/);
+  });
+
   it("acknowledges a full echoed symptom message without repeating it back", async () => {
     const { service } = await serviceWith(JSON.stringify({
       assistantMessage: "I have headache in your notes, with 37.5 recorded as your estimate. When did the cramping begin?",
@@ -213,6 +277,32 @@ describe("AI service behavior with mocked inference", () => {
     expect(result.assistantMessage).toMatch(/estimate/i);
     expect(result.assistantMessage).not.toMatch(/I have a crushing headache/i);
     expect(result.askedQuestion).toMatch(/where do you feel the headache/i);
+  });
+
+  it.each([
+    "My nose is runny, and my throat feels scratchy as I mentioned. Have you noticed any other symptoms along with this?",
+    "Your nose is runny, and your throat feels scratchy. Have you noticed any other symptoms along with this?",
+  ])("does not echo a patient's symptom details back as the assistant: %s", async (assistantMessage) => {
+    const { service } = await serviceWith(JSON.stringify({ assistantMessage }));
+    const active: IntakeState = {
+      schemaVersion: "1.0",
+      concern: "Sore throat and runny nose",
+      responses: [{ id: "r1", text: "I have had a sore throat and runny nose since yesterday.", sequence: 0 }],
+      fields: [
+        { fieldId: "sore_throat", value: "Sore throat", status: "reported", sourceResponseIds: ["r1"] },
+        { fieldId: "runny_nose", value: "Runny nose", status: "reported", sourceResponseIds: ["r1"] },
+      ],
+      questionsAsked: ["For the cold symptoms you mentioned, what are you noticing in your nose, throat, or ears?"],
+      activeQuestionId: "ent_location",
+      completion: "in_progress",
+    };
+    const recorded = recordPatientAnswer(active, "My nose is runny, and my throat feels scratchy as I mentioned. I haven’t noticed any ear symptoms.");
+    const result = await service.continueIntake({ state: recorded.state, latestResponseId: recorded.responseId });
+    if ("safety" in result) throw new Error("Expected a routine response, received a safety route");
+
+    expect(result.assistantMessage).not.toMatch(/\bmy nose is runny\b|\bmy throat feels scratchy\b|\byour nose is runny.*throat feels scratchy\b/i);
+    expect(result.assistantMessage).not.toMatch(/I haven’t noticed any ear symptoms/i);
+    expect(result.assistantMessage).toMatch(/I’ve noted|I have|Okay|Understood/i);
   });
 
   it("handles a patient correcting an assistant misattribution without inventing a fact or asking again", async () => {
@@ -350,7 +440,7 @@ describe("AI service behavior with mocked inference", () => {
     expect(result).toMatchObject({ askedQuestion: "Where do you feel the headache, and does it stay there or move?", askedQuestionId: "headache_location" });
   });
 
-  it("answers a direct question without appending the next intake question", async () => {
+  it("answers a direct question and then resumes intake without repeating an earlier question", async () => {
     const { service, client } = await serviceWith(JSON.stringify({
       assistantMessage: "I can’t determine the cause from chat. Please contact a qualified healthcare professional for advice.",
       askedQuestion: null,
@@ -366,8 +456,9 @@ describe("AI service behavior with mocked inference", () => {
     };
     const result = await service.continueIntake({ state: activeState, latestResponseId: "r1" });
     if ("safety" in result) throw new Error("Expected a direct answer, received a safety route");
-    expect(result.askedQuestion).toBeNull();
-    expect(result.assistantMessage).not.toMatch(/have you noticed|when did/i);
+    expect(result.askedQuestion).toMatch(/when did the headache begin/i);
+    expect(result.assistantMessage).toContain(result.askedQuestion);
+    expect(result.assistantMessage).not.toMatch(/have you noticed any other changes/i);
     expect(client.complete).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ maxTokens: 36, reasoningEffort: "none" }));
   });
 
@@ -392,7 +483,8 @@ describe("AI service behavior with mocked inference", () => {
     expect(result.assistantMessage).toMatch(/contact a qualified healthcare professional/i);
     expect(result.assistantMessage).toMatch(/rest(?:ing)? (?:somewhere|in a) quiet, (?:dark|dim) room/i);
     expect(result.assistantMessage).toMatch(/water/i);
-    expect(result.askedQuestion).toBeNull();
+    expect(result.askedQuestion).toBeTruthy();
+    expect(result.assistantMessage).toContain(result.askedQuestion);
   });
 
   it("replaces an incomplete notes-style reply to a direct action question with safe, relevant steps", async () => {
@@ -416,7 +508,8 @@ describe("AI service behavior with mocked inference", () => {
     expect(result.assistantMessage).toMatch(/rest(?:ing)? (?:somewhere|in a) quiet, (?:dark|dim) room/i);
     expect(result.assistantMessage).toMatch(/water/i);
     expect(result.assistantMessage).toMatch(/can’t tell what’s causing the headache/i);
-    expect(result.askedQuestion).toBeNull();
+    expect(result.askedQuestion).toBeTruthy();
+    expect(result.assistantMessage).toContain(result.askedQuestion);
     expect(result.guidanceProvided?.sourceResponseIds).toEqual(["r2"]);
   });
 
@@ -439,7 +532,8 @@ describe("AI service behavior with mocked inference", () => {
     if ("safety" in result) throw new Error("Expected a safe direct answer, received a safety route");
     expect(result.assistantMessage).toMatch(/rest|quiet|dim|water|clinician/i);
     expect(result.assistantMessage).not.toMatch(/ibuprofen|paracetamol|pain reliever|OTC|medication/i);
-    expect(result.askedQuestion).toBeNull();
+    expect(result.askedQuestion).toBeTruthy();
+    expect(result.assistantMessage).toContain(result.askedQuestion);
   });
 
   it("answers a typo-ridden question before resuming the intake and avoids repeating its last advice verbatim", async () => {
@@ -471,7 +565,8 @@ describe("AI service behavior with mocked inference", () => {
     expect(result.assistantMessage).toMatch(/rest|water/i);
     expect(result.assistantMessage).toMatch(/can't tell|can’t tell|can't determine|can’t determine/i);
     expect(result.assistantMessage).not.toMatch(/migraine/i);
-    expect(result.askedQuestion).toBeNull();
+    expect(result.askedQuestion).toBeTruthy();
+    expect(result.assistantMessage).toContain(result.askedQuestion);
   });
 
   it("recovers unsupported emergency directions with a safe direct answer", async () => {
@@ -489,7 +584,8 @@ describe("AI service behavior with mocked inference", () => {
     if ("safety" in result) throw new Error("Expected a safe direct answer, received a safety route");
     expect(result.assistantMessage).toMatch(/contact a qualified healthcare professional/i);
     expect(result.assistantMessage).not.toMatch(/call 911|emergency department/i);
-    expect(result.askedQuestion).toBeNull();
+    expect(result.askedQuestion).toBeTruthy();
+    expect(result.assistantMessage).toContain(result.askedQuestion);
   });
 
   it("answers a direct guidance question safely when the model returns malformed output", async () => {
@@ -506,7 +602,68 @@ describe("AI service behavior with mocked inference", () => {
     expect(client.complete).toHaveBeenCalledTimes(1);
     expect(result.assistantMessage).toMatch(/contact a qualified healthcare professional/i);
     expect(result.guidanceProvided?.sourceResponseIds).toEqual(["r1"]);
+    expect(result.askedQuestion).toBeTruthy();
+    expect(result.assistantMessage).toContain(result.askedQuestion);
+  });
+
+  it("answers a cold-and-chills question, preserves it, and continues with onset for the doctor’s notes", async () => {
+    const { service } = await serviceWith(JSON.stringify({
+      assistantMessage: "I can’t tell what’s causing the chills from chat. Rest, drink fluids if you can, and contact a clinician if you’re concerned.",
+      askedQuestion: null,
+    }));
+    const started = service.startIntake();
+    const recorded = recordPatientAnswer(started.state, "I have colds and chills, what should I do?");
+    const result = await service.continueIntake({ state: recorded.state, latestResponseId: recorded.responseId });
+    if ("safety" in result) throw new Error("Expected a routine intake turn.");
+    expect(result.assistantMessage).toMatch(/can.t determine the cause/i);
+    expect(result.assistantMessage).toMatch(/sip fluids/i);
+    expect(result.askedQuestion).toMatch(/when did/i);
+    expect(result.assistantMessage).toContain(result.askedQuestion);
+    const updated = applyIntakeTurn(recorded.state, result);
+    expect(updated.responses[0]?.text).toBe("I have colds and chills, what should I do?");
+    expect(updated.fields.some((field) => field.fieldId === "chills" || /cold/i.test(field.value ?? ""))).toBe(true);
+  });
+
+  it.each(["okay thank you", "thanks, that helps"])("treats ‘%s’ as an acknowledgment, not a symptom, and keeps the intake open", async (text) => {
+    const { service, client } = await serviceWith("{}");
+    const started = service.startIntake();
+    const concern = recordPatientAnswer(started.state, "I have colds and chills, what should I do?");
+    const priorAdviceState: IntakeState = {
+      ...concern.state,
+      recentAssistantMessages: ["I can’t determine the cause or choose treatment from chat. Rest and sip fluids if you’re able."],
+      activeQuestionId: "main_concern",
+    };
+    const acknowledged = recordPatientAnswer(priorAdviceState, text);
+    expect(acknowledged.state.fields.some((field) => field.sourceResponseIds.includes(acknowledged.responseId))).toBe(false);
+
+    const result = await service.continueIntake({ state: acknowledged.state, latestResponseId: acknowledged.responseId });
+    if ("safety" in result) throw new Error("Expected the intake to continue.");
+    expect(result.assistantMessage).toMatch(/you’re welcome/i);
     expect(result.askedQuestion).toBeNull();
+    expect(result.assistantMessage).not.toMatch(/when did/i);
+    expect(applyIntakeTurn(acknowledged.state, result).completion).toBe("in_progress");
+    expect(client.complete).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat a pending question when the patient only says thank you", async () => {
+    const { service, client } = await serviceWith("{}");
+    const pendingQuestion = "When did each of these symptoms begin? If they began at different times, you can tell me separately.";
+    const stateWithPendingQuestion: IntakeState = {
+      ...state,
+      schemaVersion: "1.0",
+      completion: "in_progress",
+      responses: [state.responses[0]!],
+      questionsAsked: [pendingQuestion],
+      recentAssistantMessages: [`A clinician can advise about your symptoms. ${pendingQuestion}`],
+      activeQuestionId: "symptom_onset__cold_symptoms,chills",
+    };
+    const acknowledged = recordPatientAnswer(stateWithPendingQuestion, "Thanks");
+    const result = await service.continueIntake({ state: acknowledged.state, latestResponseId: acknowledged.responseId });
+    if ("safety" in result) throw new Error("Expected a conversational acknowledgment.");
+    expect(result.assistantMessage).toMatch(/take your time/i);
+    expect(result.askedQuestion).toBeNull();
+    expect(applyIntakeTurn(acknowledged.state, result).completion).toBe("in_progress");
+    expect(client.complete).not.toHaveBeenCalled();
   });
 
   it("routes urgent synthetic input without calling the model", async () => {

@@ -1,4 +1,5 @@
 import type { IntakeState, SafetyEvent } from "./contracts.js";
+import { extractReportedTemperature } from "./intake-facts.js";
 
 /**
  * Prototype safety routing for the explicitly documented high-risk triggers.
@@ -145,7 +146,18 @@ export function assessPromptAssessmentNeed(state: Pick<IntakeState, "responses" 
   const weakness = /\b(weak(?:ness)?|low energy|lost energy|fatigue|exhausted|tired)\b/i.test(text);
   const impact = /\b(chores|usual activities|daily activities|harder to|can't do|cannot do|affect(?:s|ed|ing)? my|lost energy|need to lie down)\b/i.test(text);
   const explicitMuscleDifficulty = /\b(muscles? (?:feel|are) weak|loss of muscle strength|difficulty moving|hard to move)\b/i.test(text);
-  return worsening && weakness && (impact || explicitMuscleDifficulty);
+  const measuredTemperatures = state.responses
+    .map((response) => extractReportedTemperature(response.text, /temperature/i.test(response.questionId ?? "")))
+    .filter((value): value is string => Boolean(value));
+  const highTemperature = measuredTemperatures.some((value) => {
+    const match = value.match(/(\d{2,3}(?:\.\d+)?)(?:\s*°?\s*([cf]))?/i);
+    if (!match) return false;
+    const reading = Number(match[1]);
+    const fahrenheit = match[2]?.toLowerCase() === "f";
+    return fahrenheit ? reading >= 101.3 : reading >= 38.5;
+  });
+  return worsening && weakness && (impact || explicitMuscleDifficulty)
+    || highTemperature && weakness && impact;
 }
 
 export function urgentGuidanceForText(text: string, emergencyContact: EmergencyContactConfig = DEFAULT_EMERGENCY_CONTACT): string | null {

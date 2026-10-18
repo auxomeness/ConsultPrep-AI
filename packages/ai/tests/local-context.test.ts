@@ -34,7 +34,7 @@ describe("local model conversation context", () => {
     expect(data.recallEvidence).toBe("37.5 degrees");
     expect(messages[0][0]!.content).toContain("do not echo a full answer");
     expect(messages[0][0]!.content).toContain("no labels, JSON, or markdown");
-    expect(messages[0][0]!.content).toContain("Use plain text only: one concise patient-facing sentence");
+    expect(messages[0][0]!.content).toContain("Use plain text only: a concise patient-facing sentence");
     expect(messages[0][0]!.content).toContain("Never recommend or name a medication, pain reliever, or dose");
     expect(mocks.generate).toHaveBeenCalledWith("prompt", expect.objectContaining({ max_new_tokens: 180, do_sample: false, stopping_criteria: expect.any(Object) }));
   });

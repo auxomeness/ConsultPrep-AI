@@ -77,6 +77,9 @@ describe("structured consultation brief", () => {
     const brief = buildStructuredBrief(state);
     expect(brief.patientReportedNarrative?.text).toContain("headache");
     expect(brief.patientReportedNarrative?.text).toContain("vomiting");
+    expect(brief.patientReportedNarrative?.text).toContain("My headache began earlier this morning");
+    expect(brief.patientReportedNarrative?.text).toContain("and my vomiting began a little while ago");
+    expect(brief.patientReportedNarrative?.text).not.toContain("My symptoms began");
     expect(brief.patientReportedNarrative?.text).toContain("Crushing in my head");
     expect(brief.patientReportedNarrative?.sourceResponseIds).toEqual(expect.arrayContaining(["r1", "r2", "r3"]));
     expect(brief.symptomTimeline.filter((fact) => fact.text.startsWith("Onset:")).length).toBe(0);
@@ -88,6 +91,22 @@ describe("structured consultation brief", () => {
 
     expect(brief.patientReportedNarrative?.text).toMatch(/cramping hard to describe clearly/i);
     expect(brief.patientReportedNarrative?.sourceResponseIds).toContain("r1");
+  });
+
+  it("shows a specifically denied ear symptom in the narrative and clinician-facing context", () => {
+    const texts = [
+      "I have had a mild scratchy sore throat and a runny nose since yesterday.",
+      "My nose is runny, and my throat feels scratchy as I mentioned. I haven't noticed any ear symptoms.",
+    ];
+    const responses = texts.map((text, sequence) => ({ id: `r${sequence + 1}`, text, sequence }));
+    let fields: IntakeState["fields"] = [];
+    fields = mergeFieldUpdates(fields, extractPatientFacts(responses[0]!, "What have you been feeling?", "main_concern"));
+    fields = mergeFieldUpdates(fields, extractPatientFacts(responses[1]!, "For the cold symptoms you mentioned, what are you noticing in your nose, throat, or ears?", "ent_location"));
+    const state: IntakeState = { schemaVersion: "1.0", concern: texts[0]!, responses, fields, questionsAsked: [], completion: "in_progress" };
+    const brief = buildStructuredBrief(state);
+
+    expect(brief.patientReportedNarrative?.text).toContain("I haven’t noticed any ear symptoms.");
+    expect(brief.relevantBackground).toContainEqual(expect.objectContaining({ text: "Ear symptoms: None noticed", sourceResponseIds: ["r2"] }));
   });
 
   it("uses a short narrative, symptom bullets, action history, and separate sourced comfort information", () => {
