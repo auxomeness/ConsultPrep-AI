@@ -198,17 +198,38 @@ export const consultationCases = pgTable(
   ],
 );
 
+/** One durable idempotency receipt per submitted intake. The case's unique
+ * intake_session_id remains the second line of defense against duplicate cases. */
+export const submissionReceipts = pgTable(
+  "submission_receipts",
+  {
+    idempotencyKey: uuid("idempotency_key").primaryKey(),
+    intakeSessionId: uuid("intake_session_id").notNull().unique("submission_receipts_session_unique"),
+    caseId: uuid("case_id").notNull().unique("submission_receipts_case_unique"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "submission_receipts_case_same_session_fk",
+      columns: [table.caseId, table.intakeSessionId],
+      foreignColumns: [consultationCases.id, consultationCases.intakeSessionId],
+    }).onDelete("restrict"),
+  ],
+);
+
 export const clinicianRevisions = pgTable(
   "clinician_revisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     caseId: uuid("case_id").notNull(),
+    revisionNumber: integer("revision_number").notNull(),
     clinicianId: uuid("clinician_id").notNull().references(() => profiles.id, { onDelete: "restrict" }),
     action: clinicianRevisionAction("action").notNull(),
     briefData: jsonb("brief_data").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique("clinician_revisions_case_number_unique").on(table.caseId, table.revisionNumber),
     index("clinician_revisions_case_created_idx").on(table.caseId, table.createdAt.desc()),
     foreignKey({
       name: "clinician_revisions_case_fk",
@@ -216,5 +237,6 @@ export const clinicianRevisions = pgTable(
       foreignColumns: [consultationCases.id],
     }).onDelete("restrict"),
     check("clinician_revisions_data_is_object", sql`jsonb_typeof(${table.briefData}) = 'object'`),
+    check("clinician_revisions_number_positive", sql`${table.revisionNumber} > 0`),
   ],
 );

@@ -1,3 +1,5 @@
+import { AuthorizationError } from "../auth/authorization.ts";
+
 export type ApiErrorCode =
   | "INVALID_REQUEST"
   | "UNAUTHENTICATED"
@@ -65,7 +67,11 @@ export type ApiErrorBody = {
 
 /** Never serialize dependency exception text, prompts, credentials, or stack traces. */
 export function toPublicError(error: unknown, requestId?: string): { status: number; body: ApiErrorBody } {
-  const safeError = error instanceof ApiError ? error : new ApiError("INTERNAL_ERROR");
+  const safeError = error instanceof ApiError
+    ? error
+    : error instanceof AuthorizationError
+      ? new ApiError(error.code)
+      : new ApiError("INTERNAL_ERROR");
   return {
     status: safeError.httpStatus,
     body: {

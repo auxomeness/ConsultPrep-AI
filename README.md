@@ -18,6 +18,8 @@ The system organizes their responses into a structured brief while preserving li
 
 ## Key Features
 
+The following are product goals. Some have standalone demonstrations or backend contracts, but the complete connected application workflow is not implemented yet. See [current implementation status](#current-implementation-status).
+
 - **Adaptive patient intake** — Asks relevant follow-up questions based on information already provided.
 - **Domain-limited Q&A** — Handles general educational health questions and ConsultPrep system questions while declining clearly unrelated topics and personal diagnosis/treatment requests. Medical answers are not yet grounded in a vetted clinical reference corpus.
 - **Project-guidance retrieval** — Uses locally generated embeddings to retrieve approved project guidance and synthetic examples for the AI workflow; it is not a clinical knowledge base.
@@ -43,7 +45,16 @@ Potentially urgent symptoms must not be held up by routine intake or completion 
 
 ## AI Integration Status
 
-The current frontend intake page is a non-persistent preview. The AI package is ready to be called from a Node.js backend, and the intake path currently uses the local model only. Backend routes, authenticated session storage, and frontend-to-backend integration are not implemented yet. See the [frontend/backend AI integration guide](packages/ai/docs/frontend-backend-integration.md) for the proposed HTTP contract, server setup, state lifecycle, and verification steps.
+The current frontend intake page is a non-persistent preview. The standalone AI package in `packages/ai/` provides local inference and an optional AMD client, but it is not connected to the frontend or an application API. Authenticated session storage and frontend-to-backend integration are not implemented. See the [frontend/backend AI integration guide](packages/ai/docs/frontend-backend-integration.md) for the proposed HTTP contract, server setup, state lifecycle, and verification steps.
+
+## Current implementation status
+
+- `frontend/` contains local patient and clinician UI previews. They do not authenticate users or persist changes.
+- `packages/ai/` contains standalone AI tooling and versioned Zod contracts. The interactive intake uses local Qwen; AMD access is optional and separately guarded.
+- `backend/` contains SQL migrations, database schema definitions, authorization helpers, persistence contracts, and in-memory tests. It does not yet contain application routes, a Supabase client, or a concrete database adapter.
+- Supabase Auth, live RLS verification, actual database persistence, and end-to-end AI integration remain unfinished.
+
+Use synthetic data only. The [setup and handoff guide](SETUP_AND_HANDOFF.md) has package-by-package commands and detailed blockers.
 
 ## Consultation Brief Structure
 
@@ -93,123 +104,9 @@ ConsultPrep AI separates AI-generated content from application-controlled state.
 - Inference failures must not silently discard patient responses or substitute an unapproved provider.
 - Potentially urgent symptom handling must not depend exclusively on the language model.
 
-## Getting Started
+## Getting Started and Testing
 
-### Prerequisites
-
-Install the following before setting up the project:
-
-- Node.js version compatible with the project's Next.js version
-- npm
-- Git
-- A Supabase project
-- An AMD Token Factory account and API credentials, if API access is enabled for your selected model
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/<YOUR_GITHUB_USERNAME>/consultprep-ai.git
-cd consultprep-ai
-```
-
-Replace `<YOUR_GITHUB_USERNAME>` with your GitHub username or organization.
-
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Configure environment variables
-
-Create a local environment file using the repository's example:
-
-```bash
-cp .env.example .env.local
-```
-
-Populate the variables with the appropriate credentials and configuration values.
-
-The following names are proposed conventions; the actual application must implement and document the variables it uses.
-
-```dotenv
-# Application
-APP_URL=http://localhost:3000
-
-# Database
-DATABASE_URL=
-DIRECT_URL=
-
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# AMD Token Factory
-AMD_API_BASE_URL=
-AMD_API_KEY=
-AMD_MODEL=
-AMD_API_TIMEOUT_MS=30000
-```
-
-Keep secret credentials on the server. Never commit `.env.local`, API keys, database passwords, or privileged service-role credentials to GitHub.
-
-Only include `SUPABASE_SERVICE_ROLE_KEY` if the implementation requires it. It must never be exposed to browser code.
-
-### 4. Set up the database
-
-Apply the database migrations using the migration workflow implemented by the project.
-
-For example, if Drizzle Kit is configured:
-
-```bash
-npx drizzle-kit migrate
-```
-
-Verify the configured database connection and migration scripts before running commands. Do not run destructive migrations against production data.
-
-### 5. Start the development server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-The commands above assume the corresponding scripts and configuration exist in `package.json`. Follow the repository's actual setup instructions if they differ.
-
-## Testing
-
-Run the checks supported by the project:
-
-```bash
-npm run lint
-npm run typecheck
-npm run test
-```
-
-If the repository includes an end-to-end test suite:
-
-```bash
-npm run test:e2e
-```
-
-These commands require matching scripts to be configured in `package.json`.
-
-Testing should cover:
-
-- Adaptive questioning and preservation of patient responses
-- Structured-output validation and malformed AI responses
-- Source traceability between brief entries and original statements
-- Patient review, correction, and submission
-- Authentication, authorization, and database access controls
-- Duplicate submissions and failed database writes
-- Clinician editing and explicit finalization
-- AI provider timeouts and unavailable services
-- Potentially urgent symptoms that must interrupt routine intake
-- Conflicting, unknown, skipped, and unanswered information
-
-Use synthetic scenarios for development and testing. Do not include real patient information in test fixtures, screenshots, logs, or public issue reports.
+There is no root npm workspace. Install and run each package separately. For the current prerequisites, exact frontend and AI commands, local Supabase workflow, synthetic seed, migrations, tests, and deployment blockers, follow [SETUP_AND_HANDOFF.md](SETUP_AND_HANDOFF.md). That guide reflects commands and scripts actually present in this repository; there is no configured root `npm install` or Drizzle migration command.
 
 ## Safety and Limitations
 

@@ -32,6 +32,7 @@ The implementation model is Supabase Auth for identity, `public.profiles.role` f
 - Intake submission requires the patient to own the session and its current status to be `confirmed_by_patient`.
 - Clinician review/edit/finalize requires role `clinician` and exact equality with `consultation_cases.assigned_clinician_id`. Unassigned or differently assigned cases return not-found.
 - Clinician finalization requires status `under_clinician_review`; finalized cases cannot be saved or finalized again.
+- `persistence/clinician-review.ts` scopes case listing and detail to the assigned clinician and performs a second server-side assignment check before revision saves or finalization. These operations are transaction contracts; no route or database adapter is connected yet.
 - All database updates must use a transaction where multiple rows/statuses/revisions must move together. Derive actor, owner, assignment and status from server-side reads; ignore equivalents in request JSON.
 - Return only the guard's safe error code/status to clients. Do not return query errors, role metadata for other users, or privileged database details.
 

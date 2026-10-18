@@ -1,0 +1,20 @@
+{
+  "name": "@consultprep/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test api/api-contracts.test.ts auth/authorization.test.ts persistence/consultation-persistence.test.ts persistence/clinician-review.test.ts",
+    "typecheck": "tsc --noEmit",
+    "db:check": "drizzle-kit check",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "drizzle-kit": "^0.31.4",
+    "typescript": "^5.9.3"
+  }
+}
